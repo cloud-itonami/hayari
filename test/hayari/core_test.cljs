@@ -449,5 +449,45 @@
     (testing "the join key is the plain ISO2 country code"
       (is (= #{"JP"} (set (map :hayari.summary/country-iso2 s)))))))
 
+(deftest summary-accumulates-across-machines
+  (testing "a fresh clone holds no raw observations — the raw is gitignored — so
+            re-deriving the summary from raw discarded five committed days and
+            pushed the loss. The summary must union with what is already there."
+    (let [prior [{:hayari.summary/observed-on "2026-08-07" :hayari.summary/country-iso2 "JP"
+                  :hayari.summary/rows 25 :hayari.summary/years "{2010 2}"}
+                 {:hayari.summary/observed-on "2026-08-07" :hayari.summary/country-iso2 "US"
+                  :hayari.summary/rows 25 :hayari.summary/years "{2020 5}"}]
+          fresh [{:hayari.summary/observed-on "2026-08-03" :hayari.summary/country-iso2 "JP"
+                  :hayari.summary/rows 20 :hayari.summary/years "{1966 1}"}]
+          m (core/merge-summaries prior fresh)]
+      (is (= 3 (count m)))
+      (is (= #{"2026-08-03" "2026-08-07"} (set (map :hayari.summary/observed-on m))))))
+  (testing "re-observing the same country-day replaces that row, never duplicates"
+    (let [prior [{:hayari.summary/observed-on "d" :hayari.summary/country-iso2 "JP"
+                  :hayari.summary/rows 10}]
+          fresh [{:hayari.summary/observed-on "d" :hayari.summary/country-iso2 "JP"
+                  :hayari.summary/rows 25}]
+          m (core/merge-summaries prior fresh)]
+      (is (= 1 (count m)))
+      (is (= 25 (:hayari.summary/rows (first m)))))))
+
+(deftest year-axis-survives-without-the-raw
+  (let [summary [{:hayari.summary/observed-on "2026-08-07" :hayari.summary/country-iso2 "JP"
+                  :hayari.summary/years "{1966 2, 2020 5}"}
+                 {:hayari.summary/observed-on "2026-08-07" :hayari.summary/country-iso2 "US"
+                  :hayari.summary/years "{1966 1}"}]
+        c (core/era-coverage-from-summary summary 1960 1970)]
+    (testing "rebuilt from the committed summary alone, so it cannot shrink to
+              whatever raw the current machine happens to hold"
+      (is (= 1 (:years-populated c)))
+      (is (= 1966 (:oldest-year c))))
+    (testing "the counted quantity is country-days, and it is named that way —
+              a work seen in two countries contributes two, and calling that a
+              catalogue count would be false"
+      (is (= 2 (get (:country-days-by-year c) 1966))))
+    (testing "years outside the requested range are excluded, empties kept"
+      (is (= 11 (count (:country-days-by-year c))))
+      (is (= 0 (get (:country-days-by-year c) 1965))))))
+
 (defn -main [& _] (run-tests 'hayari.core-test))
 (apply -main *command-line-args*)

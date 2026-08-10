@@ -21,7 +21,8 @@
     BACKEND GAP, not a style — do not imitate this as though word-typed
     scalars were the intended Kotoba idiom, and do not flatten this core to
     handles to chase native. See CLAUDE.md 『`.kotoba` で「書けない」は 2 種類ある』."
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            #?(:cljs [cljs.reader])))
 
 ;; ---------------------------------------------------------------------------
 ;; Meta-article rejection
@@ -560,7 +561,12 @@
                  :hayari.summary/views-total   (reduce + 0 (map #(or (:hayari/views %) 0) rs))
                  :hayari.summary/domains       (pr-str (frequencies (keep :hayari/domain rs)))
                  :hayari.summary/kinds         (pr-str (frequencies (keep :hayari/kind rs)))
-                 :hayari.summary/eras          (pr-str (frequencies (keep :hayari/work-era rs)))}
+                 :hayari.summary/eras          (pr-str (frequencies (keep :hayari/work-era rs)))
+                 ;; Single years live here so the per-year axis can be rebuilt from
+                 ;; the committed summary alone. Deriving it from the raw made the
+                 ;; axis only as wide as whatever raw the current machine held —
+                 ;; and the raw is gitignored, so on a fresh clone that is one day.
+                 :hayari.summary/years         (pr-str (frequencies (keep :hayari/work-year rs)))}
           (:hayari/region-name (first rs))
           (assoc :hayari.summary/region-name (:hayari/region-name (first rs)))
           (:hayari/subregion-name (first rs))
@@ -575,6 +581,54 @@
 ;; ---------------------------------------------------------------------------
 ;; Corpus targets  (what to actually fetch the text and the entity for)
 ;; ---------------------------------------------------------------------------
+
+(defn- edn-read
+  "Read a pr-str'd value back. Local so the decision core keeps its only
+  require being clojure.string."
+  [s]
+  #?(:clj (read-string s) :cljs (cljs.reader/read-string s)))
+
+(defn merge-summaries
+  "Union prior and fresh country-day rows, newest run winning per (day, country).
+
+  The summary must accumulate on its OWN, not be re-derived from the raw
+  observations. Measured 2026-08-10, the hard way: the tick runs in a fresh
+  clone, the raw is gitignored, so rebuilding the summary from raw replaced five
+  days of committed history with the single day that clone had just collected —
+  and pushed it. A day that has been observed must survive the next machine to
+  run the collector."
+  [prior fresh]
+  (let [k (juxt :hayari.summary/observed-on :hayari.summary/country-iso2)
+        row? #(contains? % :hayari.summary/country-iso2)]
+    (vec (sort-by k (vals (merge (into {} (map (juxt k identity) (filter row? prior)))
+                                 (into {} (map (juxt k identity) (filter row? fresh)))))))))
+
+(defn era-coverage-from-summary
+  "Rebuild the 1900-onwards year axis from the committed summary alone.
+
+  Deliberately a different quantity from the raw-derived version it replaces,
+  and named for what it is: `:country-days-by-year` counts the country-days in
+  which a work first published in that year appeared. Summing distinct works
+  across countries would double-count a film seen in forty of them, and calling
+  that a catalogue count would be false. `:years-populated` is exact either way,
+  and it is what 『1年ごとに分けられている?』 actually asks."
+  [summary from to]
+  (let [per-day (for [r summary
+                      :let [ys (try (edn-read (str (:hayari.summary/years r)))
+                                    (catch #?(:clj Exception :cljs :default) _ nil))]
+                      :when (map? ys)
+                      [y n] ys
+                      :when (and (integer? y) (<= from y to) (pos? n))]
+                  y)
+        tally   (frequencies per-day)
+        full    (into (sorted-map) (for [y (range from (inc to))] [y (get tally y 0)]))
+        pop*    (filter (comp pos? val) full)]
+    {:from from :to to
+     :country-days-by-year full
+     :years-populated (count pop*)
+     :years-empty (- (count full) (count pop*))
+     :oldest-year (when (seq pop*) (key (first pop*)))
+     :newest-year (when (seq pop*) (key (last pop*)))}))
 
 (defn content-targets
   "Distinct (project, article) pairs from the observations, most-attended first.
