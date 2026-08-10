@@ -86,9 +86,15 @@
         (println (str "hayari xmile [" by "]: " days " day(s) held · "
                       (count series) " series · "
                       (count usable) " fitted (>= " min-days " days)"))
-        (when (< days min-days)
+        ;; The floor that actually decides is estimate-decay's three points, not
+        ;; --min-days. Reporting only against --min-days let `--min-days 1` print
+        ;; "0 fitted" with no explanation — a silent zero, which is the exact
+        ;; shape of failure this repo exists to refuse.
+        (when (< days 3)
           (println (str "  NOTE: only " days " day(s) collected. estimate-decay refuses "
-                        "fewer than 3 points, so works are absent here rather than guessed.")))
+                        "fewer than 3 points regardless of --min-days, so nothing is "
+                        "fitted here — absent rather than guessed. Collect more with "
+                        "`collect.cljs --days N`.")))
         (doseq [f (take top-n usable)]
           (println (str "  λ=" (.toFixed (:lambda f) 4)
                         "  half-life=" (if-let [h (:half-life f)] (str (.toFixed h 2) "d") "growing")
