@@ -225,13 +225,23 @@
                 (if (:error r)
                   (do (println (str "  collect failed: status " (:status (:error r))))
                       (set! (.-exitCode js/process) 1))
-                  (let [changed (:ok (git clone "status" "--porcelain"
-                                          "--" "data/hayari-summary.edn"))]
+                  ;; Name the day's most-viewed works before deciding whether
+                  ;; anything changed, so the entity index lands in the SAME
+                  ;; commit as the day that introduced those works. A follow-up
+                  ;; commit would leave the summary briefly pointing at QIDs the
+                  ;; plane cannot resolve.
+                  (let [_ (sh "nbb" [(path/join clone "src" "hayari" "corpus.cljs")
+                                     "--only" "top-entities"]
+                              {:cwd clone :stdio "inherit"})
+                        changed (:ok (git clone "status" "--porcelain"
+                                          "--" "data/hayari-summary.edn"
+                                          "data/hayari-top-entities.edn"))]
                     (if (str/blank? changed)
                       (println "  summary unchanged — no commit (an empty commit would
                                 claim work that did not happen)")
                       (do
-                        (git clone "add" "data/hayari-summary.edn")
+                        (git clone "add" "data/hayari-summary.edn"
+                             "data/hayari-top-entities.edn")
                         (let [c (git clone "-c" "user.name=Jun Kawasaki"
                                      "-c" "user.email=jun@gftd.group"
                                      "commit" "-q" "-m"
