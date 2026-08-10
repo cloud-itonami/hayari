@@ -265,5 +265,70 @@
   (is (< (abs (- 0.5 (:ok (core/mape [10] [15])))) 1e-9))
   (is (= :nothing-to-compare (get-in (core/mape [0 0] [1 2]) [:error :reason]))))
 
+(deftest domain-rollup-covers-bare-and-namespaced-kinds
+  (let [domains {"anime" :culture "person" :person "event" :event}]
+    (testing "namespaced kinds roll up by namespace"
+      (is (= :culture (:ok (core/domain-of :anime/film domains)))))
+    (testing "bare kinds roll up by their own name — using `namespace` alone
+              silently dropped :person, the largest measured class, out of the
+              axis while everything around it looked fine"
+      (is (= "person" (core/domain-key :person)))
+      (is (= "anime" (core/domain-key :anime/film)))
+      (is (= :person (:ok (core/domain-of :person domains)))))
+    (testing "an unmapped kind is reported, never bucketed"
+      (is (= :domain-unmapped (get-in (core/domain-of :chem/compound domains) [:error :reason]))))
+    (testing "no kind is its own case, distinct from an unmapped one"
+      (is (= :no-kind (get-in (core/domain-of nil domains) [:error :reason]))))))
+
+(deftest labels-are-capped-and-order-preserving
+  (let [labels {"Q1" "actor" "Q2" "singer" "Q3" "model" "Q4" "seiyū" "Q5" "tarento"}]
+    (testing "at most four values survive; Wikidata routinely lists a dozen"
+      (is (= 4 (count (:qids (core/labelled ["Q1" "Q2" "Q3" "Q4" "Q5"] labels))))))
+    (testing "source order is kept — Wikidata's first value is the primary one"
+      (is (= ["actor" "singer"] (:labels (core/labelled ["Q1" "Q2"] labels)))))
+    (testing "a QID whose label was not fetched drops out of :labels but the
+              QID list still reflects what was capped"
+      (let [r (core/labelled ["Q1" "Q9"] labels)]
+        (is (= ["Q1" "Q9"] (:qids r)))
+        (is (= ["actor"] (:labels r)))))))
+
+(deftest domain-series-keeps-the-unclassified-visible
+  (let [ds [{:hayari/observed-on "2026-08-07" :hayari/domain :culture :hayari/views 100}
+            {:hayari/observed-on "2026-08-07" :hayari/domain :culture :hayari/views 50}
+            {:hayari/observed-on "2026-08-07" :hayari/views 10}
+            {:hayari/observed-on "2026-08-08" :hayari/domain :culture :hayari/views 90}]
+        s  (core/domain-series ds)]
+    (testing "views are summed per domain per day"
+      (is (= [{:day "2026-08-07" :views 150} {:day "2026-08-08" :views 90}]
+             (:points (:culture s)))))
+    (testing "rows with no domain become :unmapped rather than vanishing —
+              an aggregate that silently omits what the table missed would
+              understate the total it appears to describe"
+      (is (contains? s :unmapped))
+      (is (= [{:day "2026-08-07" :views 10}] (:points (:unmapped s)))))))
+
+(deftest coverage-counts-the-new-axes
+  (let [cov (core/coverage-report {:countries-requested 6 :countries-responded 6
+                                   :countries-with-rows 6 :countries-no-data []
+                                   :titles-seen 90 :qid-resolved 72 :qid-unresolved 18
+                                   :kind-classified 64 :kind-unclassified 26
+                                   :era-dated 24 :era-undated 66
+                                   :domain-mapped 64 :domain-unmapped 0
+                                   :genre-labelled 21 :occupation-labelled 35})]
+    (is (= 64 (:domain/mapped cov)))
+    (is (= 0 (:domain/unmapped cov)))
+    (is (= 21 (:genre/labelled cov)))
+    (is (= 35 (:occupation/labelled cov)))
+    (testing "sparse genre/occupation coverage does not mark a run degraded —
+              most articles are neither a work with a genre nor a person"
+      (is (false? (:enrichment/degraded? cov))))))
+
+(deftest wikimedia-internal-items-are-rejected
+  (testing "found in the unclassified tail after the first pass: machinery that
+            had been surviving as though it were a subject"
+    (is (core/wikimedia-meta? ["Q17442446"]))
+    (is (core/wikimedia-meta? ["Q104635718"]))
+    (is (core/wikimedia-meta? ["Q15633587"]))))
+
 (defn -main [& _] (run-tests 'hayari.core-test))
 (apply -main *command-line-args*)

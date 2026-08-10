@@ -143,12 +143,17 @@
 
   Labels are the ones the live API returned on 2026-08-10, pinned here for the
   same reason data/kinds.edn pins its own."
-  {"Q13406463" "Wikimedia list article"
-   "Q4167410"  "Wikimedia disambiguation page"
-   "Q4167836"  "Wikimedia category"
-   "Q11266439" "Wikimedia template"
-   "Q11753321" "Wikimedia navigational template"
-   "Q35252665" "MediaWiki non-main namespace"})
+  {"Q13406463"  "Wikimedia list article"
+   "Q4167410"   "Wikimedia disambiguation page"
+   "Q4167836"   "Wikimedia category"
+   "Q11266439"  "Wikimedia template"
+   "Q11753321"  "Wikimedia navigational template"
+   "Q35252665"  "MediaWiki non-main namespace"
+   ;; Found in the unclassified tail on 2026-08-10, after the first pass:
+   ;; machinery that had been surviving as though it were a subject.
+   "Q17442446"  "Wikimedia internal item"
+   "Q104635718" "Wikimedia artist discography"
+   "Q15633587"  "MediaWiki main namespace page"})
 
 (defn wikimedia-meta?
   "True when P31 marks this as a Wikimedia-internal page.
@@ -173,6 +178,50 @@
     (if (seq hits)
       {:ok (:kind (first (sort-by :rank hits)))}
       {:error {:reason :unclassified :p31 (vec p31-qids)}})))
+
+(defn domain-key
+  "The key a kind rolls up under.
+
+  Namespaced kinds (`:anime/film`) roll up by namespace; bare ones (`:person`,
+  `:manga`, `:event`) by their own name. Using `namespace` alone silently
+  returned nil for every bare kind — measured 2026-08-10, that dropped the
+  single largest class, `:person`, out of the domain axis entirely while the
+  namespaced kinds around it looked fine."
+  [kind]
+  (or (namespace kind) (name kind)))
+
+(defn domain-of
+  "Roll a kind up to a domain via `domains` (data/domains.edn).
+  An unmapped kind is reported, never bucketed."
+  [kind domains]
+  (if (nil? kind)
+    {:error {:reason :no-kind}}
+    (if-let [d (get domains (domain-key kind))]
+      {:ok d}
+      {:error {:reason :domain-unmapped :kind kind}})))
+
+;; ---------------------------------------------------------------------------
+;; Genre and occupation
+;; ---------------------------------------------------------------------------
+
+(def ^:private max-labels
+  "How many genre/occupation values to keep per row. Wikidata routinely lists
+  a dozen; the first few carry the signal and the rest inflate every datom."
+  4)
+
+(defn labelled
+  "Turn a list of QIDs into {:qids [...] :labels [...]}, keeping source order
+  and dropping QIDs whose label was not fetched.
+
+  Labels are resolved at collection time rather than from a curated table.
+  There are thousands of occupations and tens of thousands of genres; a
+  hand-maintained mapping for those would be permanently and invisibly stale,
+  which is the failure mode data/kinds.edn can afford only because its head is
+  short and measured."
+  [qids labels]
+  (let [ks (vec (take max-labels qids))]
+    {:qids   ks
+     :labels (vec (keep #(get labels %) ks))}))
 
 ;; ---------------------------------------------------------------------------
 ;; Region
@@ -255,7 +304,9 @@
            titles-seen qid-resolved qid-unresolved
            kind-classified kind-unclassified era-dated era-undated
            qid-batch-failed claim-batch-failed
-           countries-skipped qid-skipped claim-skipped]}]
+           countries-skipped qid-skipped claim-skipped
+           domain-mapped domain-unmapped genre-labelled occupation-labelled
+           label-batch-failed]}]
   {:countries/requested   countries-requested
    ;; Answering the API is not the same as yielding an observation, and one
    ;; number for both flatters the result. Measured 2026-08-08: 101 countries
@@ -282,8 +333,20 @@
    :claim/batch-failed    (or claim-batch-failed 0)
    :qid/skipped-budget    (or qid-skipped 0)
    :claim/skipped-budget  (or claim-skipped 0)
+   :label/batch-failed    (or label-batch-failed 0)
+   ;; A classified row without a domain means data/domains.edn is missing a
+   ;; roll-up key, not that the row belongs nowhere. Counted so the table can
+   ;; be extended from evidence, the same way kinds.edn is.
+   :domain/mapped         (or domain-mapped 0)
+   :domain/unmapped       (or domain-unmapped 0)
+   ;; Genre separates ドラマ from アニメ; occupation separates an actor from a
+   ;; politician. Both are sparse by nature — most articles are neither — so
+   ;; these are reported as counts, not as a completeness score.
+   :genre/labelled        (or genre-labelled 0)
+   :occupation/labelled   (or occupation-labelled 0)
    :enrichment/degraded?  (boolean (or (pos? (or qid-batch-failed 0))
                                        (pos? (or claim-batch-failed 0))
+                                       (pos? (or label-batch-failed 0))
                                        (pos? (or qid-skipped 0))
                                        (pos? (or claim-skipped 0))
                                        (seq countries-skipped)))
@@ -326,6 +389,23 @@
                                        (for [[d ds] (group-by :hayari/observed-on rs)]
                                          {:day   d
                                           :views (reduce + 0 (map #(or (:hayari/views %) 0) ds))})))}])))))
+
+(defn domain-series
+  "Daily total views per domain — the aggregate a stock-and-flow model wants
+  when the question is about a class of attention rather than one work.
+
+  Rows with no domain are grouped under :unmapped rather than dropped, so the
+  aggregate cannot quietly exclude what the roll-up table failed to classify."
+  [datoms]
+  (let [rows (filter :hayari/observed-on datoms)]
+    (into {}
+          (for [[dom rs] (group-by #(or (:hayari/domain %) :unmapped) rows)]
+            [dom {:label  (name dom)
+                  :kind   dom
+                  :points (vec (sort-by :day
+                                        (for [[d ds] (group-by :hayari/observed-on rs)]
+                                          {:day   d
+                                           :views (reduce + 0 (map #(or (:hayari/views %) 0) ds))})))}]))))
 
 (defn- day-index
   "Days since the first point, so the fit is over elapsed time rather than
@@ -456,6 +536,19 @@
                   (:subregion-name r) (assoc :hayari/subregion-name (:subregion-name r))
                   (:qid r)            (assoc :hayari/wikidata-qid (:qid r))
                   (:kind r)           (assoc :hayari/kind (:kind r))
+                  (:domain r)         (assoc :hayari/domain (:domain r))
+                  ;; P31 says "television series" for a Japanese drama AND for a
+                  ;; Korean one AND for anything else broadcast; measured
+                  ;; 2026-08-10, 進撃の巨人 and 鬼滅の刃 are both "manga series"
+                  ;; while ひよっこ and 愛の不時着 are both "television series".
+                  ;; Genre is the axis that actually separates ドラマ from アニメ.
+                  (seq (:genres r))   (assoc :hayari/genres (:genres r))
+                  (seq (:genre-qids r)) (assoc :hayari/genre-qids (:genre-qids r))
+                  ;; A person's P31 is always Q5. Occupation is the only thing
+                  ;; that distinguishes an actor from a politician from an
+                  ;; athlete, and people were the largest class every day.
+                  (seq (:occupations r)) (assoc :hayari/occupations (:occupations r))
+                  (seq (:occupation-qids r)) (assoc :hayari/occupation-qids (:occupation-qids r))
                   ;; Both granularities are emitted. The decade is the cohort a
                   ;; reader usually wants; the year is what was actually sourced
                   ;; from P577, and rounding it away in the only stored value

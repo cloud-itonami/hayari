@@ -246,8 +246,33 @@
 (defn- claim-times [claims prop]
   (keep #(get-in % ["mainsnak" "datavalue" "value" "time"]) (get claims prop)))
 
+(defn fetch-labels
+  "English labels for up to 50 QIDs. Returns {:failed n :labels {qid -> label}}.
+
+  Genre and occupation are emitted as readable strings alongside their QIDs.
+  Curating those two vocabularies by hand is not an option — there are
+  thousands of occupations — and emitting bare QIDs would make the output
+  unreadable without a second round trip for every consumer."
+  [qids]
+  (if (past-deadline?)
+    (js/Promise.resolve {:failed 0 :skipped (count qids) :labels {}})
+    (let [url (str "https://www.wikidata.org/w/api.php"
+                   "?action=wbgetentities&props=labels&languages=en&format=json"
+                   "&ids=" (str/join "|" qids))]
+      (-> (fetch-json url)
+          (.then (fn [res]
+                   (if (:error res)
+                     {:failed (count qids) :labels {}}
+                     {:failed 0
+                      :labels (into {}
+                                    (keep (fn [[qid ent]]
+                                            (when-let [l (get-in ent ["labels" "en" "value"])]
+                                              [qid l]))
+                                          (get (:ok res) "entities")))})))))))
+
 (defn fetch-claims
-  "P31 (kind), P495 (origin) and the date properties for up to 50 QIDs.
+  "P31 (kind), P136 (genre), P106 (occupation), P495 (origin) and the date
+  properties for up to 50 QIDs.
 
   P571/P1191/P580 are fetched alongside P577 because most rows carried no
   publication date at all — 765 of 886 on 2026-08-08 — and a work with an
@@ -272,6 +297,8 @@
                                          :p571  (vec (claim-times c "P571"))
                                          :p1191 (vec (claim-times c "P1191"))
                                          :p580  (vec (claim-times c "P580"))
+                                         :p136  (vec (claim-ids c "P136"))
+                                         :p106  (vec (claim-ids c "P106"))
                                          :p495  (first (claim-ids c "P495"))}]))
                                (get (:ok res) "entities")))})))))))
 
@@ -317,7 +344,7 @@
 (defn collect-day
   "Observe one country-day across the roster. Returns a promise of the datoms
   for that day (coverage entity first)."
-  [{:keys [date-str countries top-n regions kinds]}]
+  [{:keys [date-str countries top-n regions kinds domains]}]
   (let [ymd* (ymd date-str)]
     (-> (pmap-limited rest-concurrency #(fetch-country % ymd* top-n) countries)
         (.then
@@ -346,15 +373,32 @@
                                  qids        (vec (distinct (vals title->qid)))]
                              (-> (pmap-limited api-concurrency fetch-claims (partition-all 50 qids))
                                  (.then (fn [claim-results]
-                                          {:rows ok-rows :no-data no-data :skipped-c skipped-c
-                                           :title->qid title->qid :title->ns title->ns
-                                           :qid-failed qid-failed :qid-skipped qid-skipped
-                                           :claim-failed (reduce + 0 (map :failed claim-results))
-                                           :claim-skipped (reduce + 0 (keep :skipped claim-results))
-                                           :claims (apply merge {} (map :claims claim-results))}))))))
+                                          (let [claims (apply merge {} (map :claims claim-results))
+                                                ;; Only the QIDs we will actually
+                                                ;; emit get a label lookup — the
+                                                ;; per-row cap is applied first,
+                                                ;; so a work with 20 genres costs
+                                                ;; 4 labels, not 20.
+                                                aux (vec (distinct
+                                                           (mapcat (fn [c]
+                                                                     (concat (take 4 (:p136 c))
+                                                                             (take 4 (:p106 c))))
+                                                                   (vals claims))))]
+                                            (-> (pmap-limited api-concurrency fetch-labels
+                                                              (partition-all 50 aux))
+                                                (.then (fn [label-results]
+                                                         {:rows ok-rows :no-data no-data
+                                                          :skipped-c skipped-c
+                                                          :title->qid title->qid :title->ns title->ns
+                                                          :qid-failed qid-failed :qid-skipped qid-skipped
+                                                          :claim-failed (reduce + 0 (map :failed claim-results))
+                                                          :claim-skipped (reduce + 0 (keep :skipped claim-results))
+                                                          :claims claims
+                                                          :labels (apply merge {} (map :labels label-results))
+                                                          :label-failed (reduce + 0 (map :failed label-results))}))))))))))
                   (.then
-                    (fn [{:keys [rows no-data skipped-c title->qid title->ns claims
-                                 qid-failed claim-failed qid-skipped claim-skipped]}]
+                    (fn [{:keys [rows no-data skipped-c title->qid title->ns claims labels
+                                 qid-failed claim-failed qid-skipped claim-skipped label-failed]}]
                       (let [;; Two rejections the title filter cannot make.
                             ;; ns != 0 is MediaWiki's own answer to "is this an
                             ;; article", in every language at once. P31 catches
@@ -376,15 +420,23 @@
                                           c    (get claims qid)
                                           reg  (:ok (core/region-of (:country r) regions))
                                           kind (when c (:ok (core/classify-kind (:p31 c) kinds)))
-                                          dt   (when c (:ok (core/dated-by c)))]
+                                          dom  (:ok (core/domain-of kind domains))
+                                          dt   (when c (:ok (core/dated-by c)))
+                                          gen  (when c (core/labelled (:p136 c) labels))
+                                          occ  (when c (core/labelled (:p106 c) labels))]
                                       (cond-> r
                                         reg  (merge (select-keys reg [:region-m49 :region-name
                                                                       :subregion-m49 :subregion-name]))
                                         qid  (assoc :qid qid)
                                         kind (assoc :kind kind)
+                                        dom  (assoc :domain dom)
                                         dt   (assoc :work-year (:year dt)
                                                     :work-era  (:era dt)
                                                     :dated-via (:via dt))
+                                        (seq (:labels gen)) (assoc :genres (:labels gen)
+                                                                   :genre-qids (:qids gen))
+                                        (seq (:labels occ)) (assoc :occupations (:labels occ)
+                                                                   :occupation-qids (:qids occ))
                                         (:p495 c) (assoc :origin-qid (:p495 c)))))
                                   kept)
                             lifts   (core/cross-country-lift enriched)
@@ -412,12 +464,20 @@
                                      :claim-batch-failed  claim-failed
                                      :countries-skipped   skipped-c
                                      :qid-skipped         qid-skipped
-                                     :claim-skipped       claim-skipped})
+                                     :claim-skipped       claim-skipped
+                                     :label-batch-failed  label-failed
+                                     :domain-mapped       (count (filter :domain final))
+                                     :domain-unmapped     (count (filter #(and (:kind %) (not (:domain %))) final))
+                                     :genre-labelled      (count (filter :genres final))
+                                     :occupation-labelled (count (filter :occupations final))})
                                   :titles/non-article-dropped meta-n
                                   :titles/dropped-by-namespace ns-n
                                   :titles/dropped-by-p31 (- meta-n ns-n))]
                         (println (str "    qid " (count title->qid) "/" (count rows)
                                       " · kind " (:kind/classified cov)
+                                      " · domain " (:domain/mapped cov)
+                                      " · genre " (:genre/labelled cov)
+                                      " · occ " (:occupation/labelled cov)
                                       " · era " (:era/dated cov)
                                       " · dropped " meta-n " (ns " ns-n ")"
                                       (when (:enrichment/degraded? cov) " · DEGRADED")))
@@ -442,6 +502,7 @@
         out-path  (or (:out opts) (path/join root "data" "hayari.datoms.edn"))
         regions   (read-edn (path/join root "data" "m49-regions.edn"))
         kinds     (read-edn (path/join root "data" "kinds.edn"))
+        domains   (read-edn (path/join root "data" "domains.edn"))
         countries (if-let [c (:countries opts)]
                     (str/split c #",")
                     (vec (keys regions)))
@@ -457,8 +518,8 @@
                   " · prior " (count prior) " datoms"))
     (-> (reduce (fn [p d]
                   (.then p (fn [acc]
-                             (.then (collect-day {:date-str d :countries countries
-                                                  :top-n top-n :regions regions :kinds kinds})
+                             (.then (collect-day {:date-str d :countries countries :top-n top-n
+                                                  :regions regions :kinds kinds :domains domains})
                                     (fn [ds] (into acc ds))))))
                 (js/Promise.resolve [])
                 dates)

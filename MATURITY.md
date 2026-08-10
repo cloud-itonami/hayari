@@ -11,9 +11,9 @@ not evidence, and that applies to this file first.
 | axis | state | evidence |
 |---|---|---|
 | **substrate** | `src/hayari/{core.cljc,collect.cljs,xmile.cljc,simulate.cljs}` | decision core is pure and I/O-free; effects and the XMILE engine are separate |
-| **test** | 21 tests / 89 assertions | 16/71 core (no sibling checkout needed) + 5/18 XMILE integration |
+| **test** | 26 tests / 110 assertions | 21/92 core (no sibling checkout needed) + 5/18 XMILE integration |
 | **governed** | **none** | hayari publishes no assessments and actuates nothing, so it carries no governor. See "Why no governor" below |
-| **ingest** | 3 live public APIs, unauthenticated | Wikimedia pageviews · MediaWiki pageprops · Wikidata claims. All probed 2026-08-10 |
+| **ingest** | 3 live public APIs, unauthenticated | Wikimedia pageviews · MediaWiki pageprops · Wikidata claims+labels. All probed 2026-08-10 |
 | **docs** | README · MATURITY.md · `docs/operator-quickstart.md` · ADR-2608103000 | quickstart carries real pasted output, not invented output |
 | **surface** | registry entry + XMILE projection | `manifest/observatories.edn`; `data/hayari-xmile.edn` is consumable by `dynamics` |
 | **fresh** | daily | registry `:change-rate 1.0`, matching the source's daily granularity |
@@ -30,7 +30,10 @@ no judgement for it to bound. If hayari ever publishes an interpretation
 
 - [x] Per-country attention from Wikimedia, all 249 M49 countries by default
 - [x] Region axis from UN M49, generated from a real source with provenance
-- [x] Work kind from Wikidata P31, 44 types, every label pinned from the live API
+- [x] Work kind from Wikidata P31, 91 types, every label pinned from the live API
+- [x] Genre from P136 — the axis that actually separates ドラマ from アニメ
+- [x] Occupation from P106 — the only thing that separates an actor from a politician
+- [x] Domain roll-up (culture / person / science / sport / event / organisation / place)
 - [x] Work year AND decade from P577, falling back to P571/P1191/P580 in priority order
 - [x] One work across language editions is one work (QID identity)
 - [x] Non-articles rejected by MediaWiki's own namespace number, not by title prefixes
@@ -61,7 +64,20 @@ nothing on most days.
 
 Classification depth.
 
-- [x] 44 P31 types, chosen by counting what actually went unclassified
+- [x] 91 P31 types. The head was chosen by counting what actually went
+      unclassified; a marked [BREADTH] block adds chemistry, medicine,
+      astronomy and biology, which had **not** been observed yet. The two
+      provenance classes are labelled in `data/kinds.edn` so the size of the
+      table is never read as evidence of what has been seen
+- [x] **P31 alone cannot tell ドラマ from アニメ.** Measured 2026-08-10:
+      進撃の巨人 and 鬼滅の刃 are both `manga series`; ひよっこ, 半沢直樹 and
+      愛の不時着 are all `television series`. P136 genre is what separates them
+      (`drama television series` / `adventure anime and manga` / `drama anime`)
+- [x] **A person's P31 is always Q5.** P106 occupation is the resolution —
+      `actor`, `seiyū`, `tarento`, `basketball player`, `announcer` all observed
+- [x] Genre and occupation labels are resolved at collection time, not from a
+      curated table. There are thousands of occupations; a hand-maintained map
+      would be permanently and invisibly stale
 - [ ] Re-measure the unclassified tail after a 30-day collection and extend again
 - [ ] `:hayari/kind` currently returns the lowest-ranked match; consider emitting
       all matches so a consumer can regroup without re-querying Wikidata
@@ -82,13 +98,18 @@ Dating depth.
       dataset (as `hirameki-patents` does) or a summary projection under
       `90-docs/observatory/`. Until that is decided, **there is no durable
       year-over-year history and this file will not claim one**
-- [ ] Registry entry `:expect` should move to `:produces-datoms-idempotent` once
-      history is durable — a same-day re-run correctly adds nothing
+- [x] Registry entry `:expect` is `:produces-datoms-idempotent`, and both
+      branches were observed rather than assumed: first run Δbytes=398668,
+      immediate re-run Δbytes=0, both passing
 
 ## R2 — system dynamics (started)
 
 - [x] Attention decay as a one-stock XMILE model, simulated by the standard engine
 - [x] λ, half-life, r² and in-sample MAPE reported per work
+- [x] `--by domain` fits the same model to per-domain aggregates, so the
+      question can be "does attention to culture drain differently from
+      attention to events". Measured 2026-08-08: person λ=0.19 (half-life
+      3.6d, r²=0.90) while culture was still rising over the same window
 - [ ] Feed `data/hayari-xmile.edn` into `kotoba-lang/dynamics` for Meadows
       leverage scoring, as `loop-system-dynamics` does for its entities
 - [ ] Model the inflow. Today only decay is modelled, so a work still rising

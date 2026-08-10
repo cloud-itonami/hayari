@@ -1,0 +1,49 @@
+;; hayari 流行 — kind namespace -> domain roll-up.
+;;
+;; Hand-written vocabulary (the only hand-written data file besides kinds.edn).
+;; It answers "which domain is this country's attention on today" without a
+;; consumer having to know all 90-odd kinds.
+;;
+;; Keyed by the NAMESPACE of the kind keyword, not the whole keyword, so adding
+;; `:anime/ova` to kinds.edn does not require touching this file. A kind whose
+;; namespace is absent yields :hayari/domain :unmapped — counted in coverage,
+;; never guessed into a bucket.
+;;
+;; `:person` is deliberately its own domain rather than being folded into
+;; culture. People were the single largest class in every measured day, and
+;; merging them into culture would make "culture" mean "culture plus whoever
+;; was in the news", which is not a quantity anyone could interpret.
+
+{"anime"  :culture
+ "manga"  :culture
+ "comic"  :culture
+ "tv"     :culture
+ "film"   :culture
+ "media"  :culture
+ "music"  :culture
+ "text"   :culture
+ "art"    :culture
+ "game"   :culture
+ ;; A fictional character belongs to culture, not to :person. Conflating the
+ ;; two would put Superman in the same bucket as a head of state.
+ "character" :culture
+
+ "person" :person
+ "group"  :person
+
+ "chem"   :science
+ "bio"    :science
+ "med"    :science
+ "sci"    :science
+ "astro"  :science
+ "nature" :science
+
+ "sport"  :sport
+
+ "event"  :event
+ "time"   :event
+
+ "org"    :organisation
+ "web"    :organisation
+
+ "place"  :place}

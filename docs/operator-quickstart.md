@@ -22,7 +22,7 @@ west update --fetch smart org-oasis-open-xmile
 $ nbb --classpath src:test test/hayari/core_test.cljs
 Testing hayari.core-test
 
-Ran 16 tests containing 71 assertions.
+Ran 21 tests containing 92 assertions.
 0 failures, 0 errors.
 ```
 
@@ -42,30 +42,30 @@ Start narrow. This finishes in under a minute and shows every counter you will
 later read at full scale.
 
 ```
-$ nbb src/hayari/collect.cljs --date 2026-08-08 --days 4 --top 10 \
-      --countries JP,US,FR,KR,TW,BR --out /tmp/multi2.edn
-hayari: 2026-08-05 .. 2026-08-08 · 6 countries · top 10 · budget 480s · prior 0 datoms
-  2026-08-05: 60 rows from 6 countries · 0 no data
-    qid 52/60 · kind 43 · era 15 · dropped 10 (ns 9)
-  2026-08-06: 60 rows from 6 countries · 0 no data
-    qid 52/60 · kind 40 · era 17 · dropped 11 (ns 9)
-  2026-08-07: 60 rows from 6 countries · 0 no data
-    qid 50/60 · kind 41 · era 18 · dropped 11 (ns 11)
-  2026-08-08: 60 rows from 6 countries · 0 no data
-    qid 48/60 · kind 40 · era 20 · dropped 12 (ns 12)
-  wrote /tmp/multi2.edn — 200 datoms across 4 day(s): 2026-08-05, 2026-08-06, 2026-08-07, 2026-08-08
+$ nbb src/hayari/collect.cljs --date 2026-08-08 --days 4 --top 15 \
+      --countries JP,KR,US,FR,BR,TW --out /tmp/dom.edn
+  2026-08-07: 90 rows from 6 countries · 0 no data
+    qid 74/90 · kind 63 · domain 63 · genre 22 · occ 36 · era 22 · dropped 20 (ns 16)
+  2026-08-08: 90 rows from 6 countries · 0 no data
+    qid 72/90 · kind 64 · domain 64 · genre 21 · occ 35 · era 24 · dropped 21 (ns 19)
+  wrote /tmp/dom.edn — 279 datoms across 4 day(s): 2026-08-05 … 2026-08-08
   audience-generation: :uncomputable-until-measured
 ```
 
 Reading that:
 
-- **`dropped 12 (ns 12)`** — rows rejected as non-articles. `ns` is MediaWiki's
+- **`dropped 21 (ns 19)`** — rows rejected as non-articles. `ns` is MediaWiki's
   own namespace number, so this works in every language; the parenthetical
   tells you how many of the drops that rule caught versus the P31 rule that
   catches list and disambiguation pages.
-- **`qid 48/60`** — titles resolved to a Wikidata item. The rest are real
+- **`qid 72/90`** — titles resolved to a Wikidata item. The rest are real
   articles with no Wikidata entry, which is a fact about the article.
-- **`era 20`** — rows that got a year. Most misses are people, who have no
+- **`genre 21` / `occ 35`** — the two axes that carry the resolution. P31 says
+  "television series" for both a Japanese drama and a Korean one, and says Q5
+  for every person alive; genre and occupation are what separate them. Both are
+  sparse by nature — most articles are neither a work nor a person — so these
+  are counts, not a completeness score.
+- **`era 24`** — rows that got a year. Most misses are people, who have no
   publication date because they are not works.
 - **The last line is not decoration.** No source here carries viewer age.
 
@@ -78,7 +78,11 @@ $ nbb src/hayari/collect.cljs
 Defaults: all 249 M49 countries, top 25, the date two days back (Wikimedia's
 per-country aggregates lag), and a 480-second wall-clock budget.
 
-Expect roughly 100 countries to answer and roughly 66 to yield an observation —
+Measured 2026-08-08 at full scale: 911 rows from 67 countries, 638 classified
+(85 unclassified), 638 rolled up to a domain with 0 unmapped, 226 genres, 369
+occupations, 188 non-articles dropped.
+
+Expect roughly 100 countries to answer and roughly 60 to yield an observation —
 those are **different numbers** and both are in the coverage entity. The gap is
 countries whose only above-threshold pages were navigation.
 
@@ -122,13 +126,37 @@ hayari xmile: 4 day(s) held · 110 works · 18 fitted (>= 3 days)
 - **MAPE is in-sample.** It scores the days the curve was fitted on. It is not
   a forecast claim and the output file repeats that in its header.
 
+## 4b. Ask a domain-level question
+
+The same model, applied to per-domain aggregates instead of single works:
+
+```
+$ nbb src/hayari/simulate.cljs --by domain --data /tmp/dom.edn
+hayari xmile [domain]: 4 day(s) held · 7 series · 5 fitted (>= 3 days)
+  λ=0.1947  half-life=3.56d  r²=0.897  MAPE=6.8%   n=4  person [:person]
+  λ=-0.0595  half-life=growing  r²=0.808  MAPE=2.6%   n=4  culture [:culture]
+  λ=-0.1658  half-life=growing  r²=0.600  MAPE=13.0%  n=4  event [:event]
+```
+
+Attention to people drained over that window while attention to culture was
+still rising. Rows with no domain appear as `unmapped` rather than being left
+out — an aggregate that quietly omits what the roll-up table missed would
+understate the total it appears to describe.
+
 ## 5. Through the registry
 
 This is the invocation that matters, because it is the one that runs unattended:
 
 ```
 $ nbb --classpath ".:scripts/nbb_compat" scripts/observatory-run.cljs --only hayari
-  ✓ hayari — produces-datoms (expect produces-datoms) exit=0 Δbytes=447531 units=891 63s
+  ✓ hayari — produces-datoms (expect produces-datoms-idempotent) exit=0 Δbytes=398668 units=754 62s
+```
+
+Run it twice. Observations accumulate, so a new day grows the ledger and a
+same-day repeat does not — and both must pass:
+
+```
+  ✓ hayari — produces-datoms-idempotent (expect produces-datoms-idempotent) exit=0 Δbytes=0 units=754 40s
 ```
 
 `--check` will happily say `登録 OK / checkout 有り` for a build that cannot

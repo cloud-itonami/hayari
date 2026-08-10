@@ -5,7 +5,8 @@
   `kotoba-lang/org-oasis-open-xmile`.
 
     nbb src/hayari/simulate.cljs [--min-days 3] [--country JP] [--top 10]
-                                 [--data PATH] [--out PATH] [--xmile-src PATH]
+                                 [--by work|domain] [--data PATH] [--out PATH]
+                                 [--xmile-src PATH]
 
   Needs at least three days in `data/hayari.datoms.edn`; collect them with
   `collect.cljs --days N`. A single day cannot show change, and change is the
@@ -68,14 +69,22 @@
                         " — run collect with --days " min-days " first"))
           (set! (.-exitCode js/process) 1))
       (let [datoms (edn/read-string (fs/readFileSync data "utf8"))
-            series (hc/work-series datoms (if-let [c (:country opts)] {:country c} {}))
+            by     (or (:by opts) "work")
+            ;; --by domain answers a different question from --by work: not
+            ;; "how fast did this film fade" but "does a country's attention to
+            ;; culture drain at a different rate than its attention to events".
+            ;; Same model, different stock.
+            series (case by
+                     "domain" (hc/domain-series datoms)
+                     (hc/work-series datoms (if-let [c (:country opts)] {:country c} {})))
             days   (count (distinct (keep :hayari/observed-on datoms)))
             fits   (->> (vals series)
                         (map hx/fit-work)
                         (keep :ok)
                         (sort-by (comp - :r2)))
             usable (filter #(<= min-days (:n %)) fits)]
-        (println (str "hayari xmile: " days " day(s) held · " (count series) " works · "
+        (println (str "hayari xmile [" by "]: " days " day(s) held · "
+                      (count series) " series · "
                       (count usable) " fitted (>= " min-days " days)"))
         (when (< days min-days)
           (println (str "  NOTE: only " days " day(s) collected. estimate-decay refuses "
@@ -95,7 +104,8 @@
                ";; MAPE is IN-SAMPLE — it scores the days the curve was fitted on and is NOT a\n"
                ";; forecast claim. Simulated by kotoba-lang/org-oasis-open-xmile (RK4, dt 0.25).\n"
                (pr-str {:hayari.xmile/days-held days
-                        :hayari.xmile/works     (count series)
+                        :hayari.xmile/grouped-by (keyword by)
+                        :hayari.xmile/series    (count series)
                         :hayari.xmile/fitted    (count usable)
                         :hayari.xmile/min-days  min-days
                         :hayari.xmile/fits      (mapv #(dissoc % :model) usable)})

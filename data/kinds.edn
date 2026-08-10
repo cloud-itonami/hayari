@@ -71,6 +71,85 @@
  "Q56061"    {:kind :place/admin-area      :rank 49}  ;; label: administrative territorial entity
  "Q16521"    {:kind :nature/taxon          :rank 45}  ;; label: taxon
 
+ ;; === added 2026-08-10 (second pass) ====================================
+ ;;
+ ;; Two provenance classes below, kept apart on purpose.
+ ;;
+ ;; [MEASURED] appeared in the unclassified tail of the real 5-day / 27-country
+ ;; collection, ranked by frequency. [BREADTH] did NOT appear yet; it is
+ ;; vocabulary added so that a spike in an unrepresented domain lands classified
+ ;; instead of unclassified. Adding a lookup row is not inventing an
+ ;; observation — but the distinction is recorded so nobody reads the size of
+ ;; this table as evidence of what has been seen.
+ ;;
+ ;; Every label below was resolved against the live Wikidata API on 2026-08-10.
+
+ ;; --- [MEASURED] screen ---------------------------------------------------
+ "Q3464665"   {:kind :tv/season             :rank 18}  ;; label: television series season
+ "Q506240"    {:kind :tv/film               :rank 22}  ;; label: television film
+ "Q196600"    {:kind :media/franchise       :rank 28}  ;; label: media franchise
+ "Q21198342"  {:kind :manga/series          :rank 9}   ;; label: manga series
+ "Q838795"    {:kind :comic/strip           :rank 22}  ;; label: comic strip
+
+ ;; --- [MEASURED] sport ----------------------------------------------------
+ "Q476028"    {:kind :sport/club            :rank 22}  ;; label: association football club
+ "Q114609228" {:kind :sport/event-edition   :rank 24}  ;; label: recurring sporting event edition
+ "Q8463186"   {:kind :sport/competition     :rank 26}  ;; label: national association football cup
+ "Q34542827"  {:kind :sport/competition     :rank 26}  ;; label: international association football national teams competition
+ "Q103229495" {:kind :sport/team            :rank 23}  ;; label: men's association football team
+ "Q1915979"   {:kind :sport/medal-table     :rank 30}  ;; label: medal table
+
+ ;; --- [MEASURED] music groups --------------------------------------------
+ "Q641066"    {:kind :music/girl-group      :rank 18}  ;; label: girl group
+ "Q216337"    {:kind :music/boy-band        :rank 18}  ;; label: boy band
+
+ ;; --- [MEASURED] events ---------------------------------------------------
+ "Q750215"    {:kind :event/mass-murder     :rank 28}  ;; label: mass murder
+ "Q21480300"  {:kind :event/mass-shooting   :rank 28}  ;; label: mass shooting
+ "Q4688003"   {:kind :event/aerial-bombing  :rank 28}  ;; label: aerial bombing of a city
+ "Q49958"     {:kind :event/opinion-poll    :rank 34}  ;; label: opinion poll
+
+ ;; --- [MEASURED] organisations & places -----------------------------------
+ "Q7278"      {:kind :org/political-party   :rank 42}  ;; label: political party
+ "Q14350"     {:kind :org/radio-station     :rank 41}  ;; label: radio station
+ "Q1126006"   {:kind :org/public-broadcaster :rank 40} ;; label: public broadcaster
+ "Q3914"      {:kind :org/school            :rank 43}  ;; label: school
+ "Q515"       {:kind :place/city            :rank 46}  ;; label: city
+ "Q902814"    {:kind :place/city            :rank 46}  ;; label: border city
+ "Q23397"     {:kind :place/lake            :rank 46}  ;; label: lake
+ "Q8502"      {:kind :place/mountain        :rank 46}  ;; label: mountain
+ "Q4022"      {:kind :place/river           :rank 46}  ;; label: river
+
+ ;; --- [MEASURED] other ----------------------------------------------------
+ "Q14795564"  {:kind :time/calendar         :rank 50}  ;; label: point in time with respect to recurrent timeframe
+ "Q235676"    {:kind :time/calendar         :rank 50}  ;; label: common year starting and ending on Wednesday
+ "Q29380"     {:kind :web/tld               :rank 46}  ;; label: sponsored top-level domain
+ "Q327618"    {:kind :web/service           :rank 46}  ;; label: webmail
+ "Q16334295"  {:kind :group/humans          :rank 52}  ;; label: group of humans
+
+ ;; --- [BREADTH] 化学・科学 — not yet observed -----------------------------
+ ;; The owner asked for chemistry alongside drama, anime and people. None of
+ ;; these appeared in the 5-day window, so they are vocabulary, not findings.
+ "Q11173"     {:kind :chem/compound         :rank 12}  ;; label: chemical compound
+ "Q11344"     {:kind :chem/element          :rank 12}  ;; label: chemical element
+ "Q79529"     {:kind :chem/substance        :rank 14}  ;; label: chemical substance
+ "Q8054"      {:kind :bio/protein           :rank 14}  ;; label: protein
+ "Q7239"      {:kind :bio/organism          :rank 40}  ;; label: organism
+ "Q12140"     {:kind :med/medication        :rank 14}  ;; label: medication
+ "Q12136"     {:kind :med/disease           :rank 14}  ;; label: disease
+ "Q11862829"  {:kind :sci/discipline        :rank 36}  ;; label: academic discipline
+ "Q6999"      {:kind :astro/object          :rank 26}  ;; label: astronomical object
+ "Q523"       {:kind :astro/star            :rank 24}  ;; label: star
+ "Q634"       {:kind :astro/planet          :rank 24}  ;; label: planet
+ "Q3863"      {:kind :astro/asteroid        :rank 24}  ;; label: asteroid
+
+ ;; --- [BREADTH] 物語 — not yet observed -----------------------------------
+ "Q8261"      {:kind :text/novel            :rank 28}  ;; label: novel
+ "Q49084"     {:kind :text/short-story      :rank 29}  ;; label: short story
+ "Q93204"     {:kind :film/documentary      :rank 24}  ;; label: documentary film
+ "Q220898"    {:kind :anime/ova             :rank 10}  ;; label: original video animation
+ "Q188451"    {:kind :music/genre           :rank 40}  ;; label: music genre
+
  ;; --- not a work ---------------------------------------------------------
  ;; Kept deliberately. A person or an event topping a country's ranking is a
  ;; real answer to "what drew attention", and classifying them lets a consumer

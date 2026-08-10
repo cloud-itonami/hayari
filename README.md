@@ -19,7 +19,10 @@
 |---|---|---|
 | **国** | ○ | Wikimedia の per-country pageview 集計（ISO 3166-1 alpha-2） |
 | **地域** | ○ | 国 → UN M49 region / sub-region（`data/m49-regions.edn`） |
-| **作品の種別** | ○ | Wikidata P31 → `data/kinds.edn`（anime / TV drama / film / manga / game / …） |
+| **作品の種別** | ○ | Wikidata P31 → `data/kinds.edn`（91 種。anime / TV / film / manga / game / 化学 / 医学 / 天文 / スポーツ …） |
+| **ジャンル** | ○ | Wikidata P136 → ラベル文字列（`drama television series` / `adventure anime and manga` / `K-pop` …） |
+| **人物の職業** | ○ | Wikidata P106 → ラベル文字列（`actor` / `seiyū` / `tarento` / `basketball player` …） |
+| **領域（roll-up）** | ○ | 種別 → `data/domains.edn`（culture / person / science / sport / event / organisation / place） |
 | **作品の年（1年単位）** | ○ | Wikidata P577 の**最初の**公開日。無ければ P571 → P1191 → P580 の順に落とす（どれが答えたかを `:hayari/dated-via` に残す） |
 | **作品の年代（10年単位）** | ○ | 上の年から導出。年と年代の**両方**を出す |
 | **原産国** | ○ | Wikidata P495（QID のまま。join key として保つ） |
@@ -101,6 +104,29 @@ stock-flow モデルの主題なので、日が互いを消してはならない
 決定が要る（DataLad dataset か `90-docs/observatory/` の投影か）。決まるまで
 **年次の履歴は存在しない**——MATURITY.md にそう書いてある。
 
+## ドラマとアニメは P31 では区別できない
+
+これは実測で分かったことで、設計上の要点である。2026-08-10 に実際の作品を引いた:
+
+```
+進撃の巨人   P31: manga series        P136: adventure anime and manga, dark fantasy anime and manga
+鬼滅の刃     P31: manga series        P136: dark fantasy, adventure anime and manga
+ひよっこ     P31: television series   P136: drama television series
+半沢直樹     P31: television series   P136: drama television series
+愛の不時着   P31: television series   P136: romantic comedy, drama
+新世紀エヴァ P31: anime television series  P136: drama anime, mecha, science fantasy
+```
+
+**`P31` は「どういう形式で世に出たか」しか言わない。** ドラマ / アニメ / ジャンルを
+分けているのは **P136** で、だから `:hayari/genres` を出す。
+
+同じ理由で **人物の P31 は必ず `Q5`（human）** である。俳優と政治家とアスリートを
+分けるのは **P106（occupation）**だけなので、`:hayari/occupations` を出す。
+
+ジャンルと職業のラベルは**収集時に引く**（表を手で持たない）。職業は数千種あり、
+手入力の対応表は必ず、しかも気付かれずに陳腐化する。`data/kinds.edn` が手書きで
+いられるのは頭が短くて実測されているからで、この 2 つはそうではない。
+
 ## XMILE — 注目の減衰を system dynamics として計算する
 
 注目は stock である。溜まり、抜けていく。その**抜ける速さ**が作品について知りたい
@@ -120,9 +146,22 @@ d/dt Attention = −Decay
 依存しない純粋な算術なので、兄弟 checkout 無しでテストできる。
 
 ```
-λ=0.5745  half-life=1.21d  r²=0.968  MAPE=9.9%  n=4  Abdul_El-Sayed [:person]
-λ=-0.0713 half-life=growing r²=0.824 MAPE=3.3%  n=4  杀人者的购物中心 [:tv/series]
+λ=0.1698  half-life=4.08d   r²=0.998  MAPE=0.6%  ひよっこ_(テレビドラマ) [:tv/series]
+λ=-0.0713 half-life=growing r²=0.824  MAPE=3.3%  杀人者的购物中心 [:tv/series]
 ```
+
+**`--by domain` で領域ごとの集約にも同じモデルを当てる。**「この国の注目は、
+文化と出来事とで違う速さで抜けていくのか」を 1 コマンドで問える:
+
+```
+$ nbb src/hayari/simulate.cljs --by domain
+  λ=0.1947  half-life=3.56d   r²=0.897  person
+  λ=-0.0595 half-life=growing r²=0.808  culture
+  λ=-0.1658 half-life=growing r²=0.600  event
+```
+
+領域が付かなかった行は捨てずに `unmapped` として集約に残す —— 表が取りこぼした
+分を黙って除くと、合計が実際より小さいのに全体を表しているように読める。
 
 - **3 点未満は当てはめを拒否する。** 2 点なら直線は必ず完全に通り、r²=1 は
   持っていない確信のように読める。
@@ -165,7 +204,9 @@ src/hayari/core.cljc      決定核（純粋・I/O 無し・外部依存なし�
 src/hayari/collect.cljs   effects（nbb）— network / clock / fs はここだけ
 src/hayari/xmile.cljc     XMILE モデルの組み立て（org-oasis-open-xmile を呼ぶ）
 src/hayari/simulate.cljs  当てはめ + 実行のエントリ
-data/kinds.edn            P31 QID → 種別（44 種。label は API 実測値を pin）
+data/kinds.edn            P31 QID → 種別（91 種。label は API 実測値を pin、
+                          [MEASURED]（実測で出た）と [BREADTH]（未観測の語彙）を明示）
+data/domains.edn          種別 → 領域の roll-up（手書き語彙）
 data/m49-regions.edn      ISO2 → UN M49（生成物、手編集しない）
 ```
 
