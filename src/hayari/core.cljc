@@ -588,6 +588,46 @@
   [s]
   #?(:clj (read-string s) :cljs (cljs.reader/read-string s)))
 
+(defn tick-health
+  "The unattended loop's own vital signs, as a datom.
+
+  A loop nobody watches is a loop that fails silently, and this one already did:
+  on 2026-08-10 `west update` failed, the pin moved without the checkout, and
+  the query plane sat four days behind while every other number looked healthy.
+  The only trace was a line in /tmp. That is the exact failure this whole
+  observatory is built to refuse, so the loop reports on itself in the same
+  place it reports on the world.
+
+  It rides in the committed summary rather than a file of its own so the query
+  plane needs no second loader — and so a stale heartbeat is visible to anyone
+  already querying hayari, not only to whoever thinks to look for it.
+
+  `:consecutive-failures` is what a monitor should alarm on. `:last-run-at`
+  updates only on runs that had news, which during backfill is every run and
+  afterwards is roughly daily; a heartbeat older than about 36 hours means the
+  loop has stopped, not that it had nothing to do."
+  [{:keys [at outcome day days-held backfill-remaining prior detail]}]
+  (let [prior-fails (or (:hayari.tick/consecutive-failures prior) 0)
+        failed?     (not (contains? #{:added-day :nothing-to-do} outcome))]
+    (cond-> {:source/dataset                    "hayari"
+             :hayari.tick/last-run-at           at
+             :hayari.tick/last-outcome          outcome
+             :hayari.tick/days-held             days-held
+             :hayari.tick/backfill-remaining    backfill-remaining
+             :hayari.tick/consecutive-failures  (if failed? (inc prior-fails) 0)
+             :hayari.tick/healthy?              (not failed?)
+             :hayari.tick/note
+             (str "The loop's own vital signs. :consecutive-failures is what to alarm on. "
+                  ":last-run-at only advances on runs that had news — during backfill that "
+                  "is every run, afterwards roughly daily — so a heartbeat older than about "
+                  "36 hours means the loop stopped, not that it was idle.")}
+      day    (assoc :hayari.tick/last-day day)
+      detail (assoc :hayari.tick/last-detail detail)
+      ;; Keep the last failure visible after recovery: a loop that failed
+      ;; yesterday and works today is not the same as one that never failed.
+      (and (not failed?) (pos? prior-fails))
+      (assoc :hayari.tick/recovered-from-failures prior-fails))))
+
 (defn merge-summaries
   "Union prior and fresh country-day rows, newest run winning per (day, country).
 
