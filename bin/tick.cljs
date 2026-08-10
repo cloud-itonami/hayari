@@ -142,6 +142,6 @@
                                 (println (str "  push failed (will retry next tick): "
                                               (:status (:error p))))
                                 (println (str "  committed and pushed " day
-                                              " — " (inc (count held)) " day(s) held")))))))))))))))))
+                                              " — " (inc (count held)) " day(s) held"))))))))))))))))))
 
 (apply -main *command-line-args*)
