@@ -489,5 +489,31 @@
       (is (= 11 (count (:country-days-by-year c))))
       (is (= 0 (get (:country-days-by-year c) 1965))))))
 
+(deftest tick-health-counts-consecutive-failures
+  (testing "a loop nobody watches fails silently — this one already did, so it
+            reports on itself where it reports on the world"
+    (let [ok (core/tick-health {:at "t1" :outcome :added-day :day "2026-08-01"
+                                :days-held 14 :backfill-remaining 2000 :prior nil})]
+      (is (true? (:hayari.tick/healthy? ok)))
+      (is (= 0 (:hayari.tick/consecutive-failures ok)))))
+  (testing "failures accumulate, which is what a monitor alarms on"
+    (let [f1 (core/tick-health {:at "t2" :outcome :collect-failed :prior nil})
+          f2 (core/tick-health {:at "t3" :outcome :push-failed :prior f1})]
+      (is (false? (:hayari.tick/healthy? f2)))
+      (is (= 2 (:hayari.tick/consecutive-failures f2)))))
+  (testing "recovery resets the count but does not erase that it happened —
+            a loop that failed yesterday is not one that never failed"
+    (let [f  (core/tick-health {:at "t2" :outcome :collect-failed :prior nil})
+          f2 (core/tick-health {:at "t3" :outcome :pin-failed :prior f})
+          r  (core/tick-health {:at "t4" :outcome :added-day :prior f2})]
+      (is (= 0 (:hayari.tick/consecutive-failures r)))
+      (is (= 2 (:hayari.tick/recovered-from-failures r)))))
+  (testing "having nothing to do is healthy — the backfill is a finite job"
+    (is (true? (:hayari.tick/healthy?
+                 (core/tick-health {:at "t" :outcome :nothing-to-do :prior nil})))))
+  (testing "it carries the dataset tag, so it is visible to anyone already
+            querying hayari rather than only to whoever looks for a health file"
+    (is (= "hayari" (:source/dataset (core/tick-health {:at "t" :outcome :added-day}))))))
+
 (defn -main [& _] (run-tests 'hayari.core-test))
 (apply -main *command-line-args*)
