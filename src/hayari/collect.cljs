@@ -23,7 +23,23 @@
             ["path" :as path]
             [clojure.edn :as edn]
             [clojure.string :as str]
-            [hayari.core :as core]))
+            [nbb.classpath :as cp]))
+
+;; This script must run as plain `nbb src/hayari/collect.cljs`, with no
+;; --classpath and from any working directory, because that is how
+;; `manifest/observatories.edn`'s runner invokes it: it builds the command as
+;; ["nbb" main & args], and nbb requires --classpath BEFORE the script path, so
+;; there is no argument the registry could pass to fix it. Measured 2026-08-10:
+;; the first registered run died with "Could not find namespace: hayari.core".
+;;
+;; Both paths below are derived from *file* rather than the process cwd. The
+;; registry's own preamble warns about exactly this: shionome and mitooshi were
+;; unrunnable because their defaults resolved against the caller's directory.
+(def ^:private src-dir (path/dirname (path/dirname *file*)))
+(def ^:private repo-root (path/dirname src-dir))
+(cp/add-classpath src-dir)
+
+(require '[hayari.core :as core])
 
 (def user-agent
   "Wikimedia requires a UA that identifies the client and a way to reach its
@@ -238,7 +254,7 @@
 
 (defn -main [& argv]
   (let [opts       (parse-args argv)
-        root       (or (:root opts) ".")
+        root       (or (:root opts) repo-root)
         date-str   (or (:date opts) (default-date))
         top-n      (js/parseInt (or (:top opts) "25") 10)
         out-path   (or (:out opts) (path/join root "data" "hayari.datoms.edn"))
