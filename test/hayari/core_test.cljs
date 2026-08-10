@@ -106,6 +106,23 @@
       (is (false? (:enrichment/degraded? cov)))
       (is (= 0 (:qid/batch-failed cov))))))
 
+(deftest budget-cutoff-is-not-absence-of-data
+  (testing "countries cut off by our own wall-clock budget are counted apart
+            from countries the API had no data for — conflating them would turn
+            our scheduling into a fact about the world"
+    (let [cov (core/coverage-report {:countries-requested 249 :countries-with-data 60
+                                     :countries-no-data ["EG"]
+                                     :countries-skipped ["ZW" "ZM"]
+                                     :titles-seen 500 :qid-resolved 100 :qid-unresolved 400
+                                     :kind-classified 90 :kind-unclassified 410
+                                     :era-dated 40 :era-undated 460
+                                     :qid-skipped 300 :claim-skipped 0})]
+      (is (= ["EG"] (:countries/no-data cov)))
+      (is (= ["ZW" "ZM"] (:countries/skipped-budget cov)))
+      (is (= 300 (:qid/skipped-budget cov)))
+      (is (true? (:enrichment/degraded? cov))
+          "a budget cutoff degrades the run even when nothing failed"))))
+
 (deftest degraded-enrichment-is-visible
   (testing "titles lost to a throttled batch are counted apart from titles that
             genuinely have no Wikidata item — the 1/874 run on 2026-08-10 looked

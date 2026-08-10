@@ -204,10 +204,16 @@
   [{:keys [countries-requested countries-with-data countries-no-data
            titles-seen qid-resolved qid-unresolved
            kind-classified kind-unclassified era-dated era-undated
-           qid-batch-failed claim-batch-failed]}]
+           qid-batch-failed claim-batch-failed
+           countries-skipped qid-skipped claim-skipped]}]
   {:countries/requested   countries-requested
    :countries/with-data   countries-with-data
    :countries/no-data     (vec countries-no-data)
+   ;; Countries the wall-clock budget cut off before they were ever asked.
+   ;; Distinct from :countries/no-data — one means the API had nothing above its
+   ;; privacy threshold, the other means we ran out of time. Reading them as the
+   ;; same number would turn our own scheduling into a fact about the world.
+   :countries/skipped-budget (vec countries-skipped)
    :titles/seen           titles-seen
    :qid/resolved          qid-resolved
    :qid/unresolved        qid-unresolved
@@ -217,8 +223,13 @@
    ;; 1/874 while every other count still looked healthy.
    :qid/batch-failed      (or qid-batch-failed 0)
    :claim/batch-failed    (or claim-batch-failed 0)
+   :qid/skipped-budget    (or qid-skipped 0)
+   :claim/skipped-budget  (or claim-skipped 0)
    :enrichment/degraded?  (boolean (or (pos? (or qid-batch-failed 0))
-                                       (pos? (or claim-batch-failed 0))))
+                                       (pos? (or claim-batch-failed 0))
+                                       (pos? (or qid-skipped 0))
+                                       (pos? (or claim-skipped 0))
+                                       (seq countries-skipped)))
    :kind/classified       kind-classified
    :kind/unclassified     kind-unclassified
    :era/dated             era-dated

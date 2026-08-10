@@ -59,6 +59,26 @@
 
 (def ^:private request-timeout-ms 20000)
 
+(def ^:private default-budget-ms
+  "Wall-clock budget for the whole collection, kept under the observatory
+   registry's 600s per-actor timeout.
+
+   Measured 2026-08-10: the same 249-country sweep took 1m35s, 3m47s, and then
+   overran 10 minutes — the spread is Wikimedia's throttling, not our work. Being
+   killed at the timeout is the worst outcome available: exit 124, no file
+   written, and a registry line reading `Δbytes=0` that looks identical to a
+   collector that never worked at all.
+
+   So the deadline is ours, not the runner's. When it passes, remaining work is
+   skipped, counted, and reported as degraded — a partial observation that says
+   how partial it is beats no observation."
+  480000)
+
+(defonce ^:private deadline (atom nil))
+
+(defn- past-deadline? []
+  (and @deadline (> (js/Date.now) @deadline)))
+
 ;; ---------------------------------------------------------------------------
 ;; HTTP
 ;; ---------------------------------------------------------------------------
@@ -144,7 +164,9 @@
   bucket for privacy. It is renamed to :views here and the rounding is stated in
   the README rather than being quietly presented as an exact count."
   [iso2 ymd top-n]
-  (-> (fetch-json (pageviews-url iso2 ymd))
+  (if (past-deadline?)
+    (js/Promise.resolve {:country iso2 :skipped true})
+    (-> (fetch-json (pageviews-url iso2 ymd))
       (.then (fn [res]
                (if-let [err (:error res)]
                  {:country iso2 :error err}
@@ -158,7 +180,7 @@
                        shared (:ok (core/attention-shares rows))]
                    {:country iso2
                     :seen    (count rows)
-                    :rows    (vec (take top-n shared))}))))))
+                    :rows    (vec (take top-n shared))})))))))
 
 ;; ---------------------------------------------------------------------------
 ;; 2. Title -> Wikidata QID
@@ -175,7 +197,9 @@
   `normalized` table is followed so a normalised response still maps back to the
   title the pageview API gave us, instead of dropping the row."
   [project titles]
-  (let [url (str "https://" (api-host project) "/w/api.php"
+  (if (past-deadline?)
+    (js/Promise.resolve {:failed 0 :skipped (count titles)})
+    (let [url (str "https://" (api-host project) "/w/api.php"
                  "?action=query&prop=pageprops&ppprop=wikibase_item&format=json&formatversion=2"
                  "&titles=" (js/encodeURIComponent (str/join "|" titles)))]
     (-> (fetch-json url)
@@ -198,7 +222,7 @@
                                           orig  (get norm title title)
                                           qid   (get-in p ["pageprops" "wikibase_item"])]
                                       (when qid [[project orig] qid])))
-                                  pages))})))))))
+                                  pages))}))))))))
 
 ;; ---------------------------------------------------------------------------
 ;; 3. QID -> claims
@@ -213,7 +237,9 @@
 (defn fetch-claims
   "P31 / P577 / P495 for up to 50 QIDs."
   [qids]
-  (let [url (str "https://www.wikidata.org/w/api.php"
+  (if (past-deadline?)
+    (js/Promise.resolve {:failed 0 :skipped (count qids)})
+    (let [url (str "https://www.wikidata.org/w/api.php"
                  "?action=wbgetentities&props=claims&format=json"
                  "&ids=" (str/join "|" qids))]
     (-> (fetch-json url)
@@ -228,7 +254,7 @@
                                    [qid {:p31   (vec (claim-ids c "P31"))
                                          :p577  (vec (claim-times c "P577"))
                                          :p495  (first (claim-ids c "P495"))}]))
-                               (get (:ok res) "entities")))}))))))
+                               (get (:ok res) "entities")))})))))))
 
 ;; ---------------------------------------------------------------------------
 ;; Orchestration
@@ -263,13 +289,17 @@
         countries  (if-let [c (:countries opts)]
                      (str/split c #",")
                      (vec (keys regions)))
+        budget-ms  (js/parseInt (or (:budget-ms opts) (str default-budget-ms)) 10)
         ymd*       (ymd date-str)]
-    (println (str "hayari: " date-str " · " (count countries) " countries · top " top-n))
+    (reset! deadline (+ (js/Date.now) budget-ms))
+    (println (str "hayari: " date-str " · " (count countries) " countries · top " top-n
+                  " · budget " (quot budget-ms 1000) "s"))
     (-> (pmap-limited rest-concurrency #(fetch-country % ymd* top-n) countries)
         (.then
           (fn [per-country]
-            (let [ok-rows   (mapcat :rows (remove :error per-country))
+            (let [ok-rows   (mapcat :rows (remove #(or (:error %) (:skipped %)) per-country))
                   no-data   (mapv :country (filter :error per-country))
+                  skipped-c (mapv :country (filter :skipped per-country))
                   by-project (group-by :project ok-rows)
                   ;; One title may top many countries' rankings; resolve each
                   ;; (project, title) once, not once per country.
@@ -278,25 +308,34 @@
                                            (partition-all 50 (distinct (map :article rows)))))
                                     by-project)]
               (println (str "  attention: " (count ok-rows) " rows · "
-                            (count no-data) " countries with no data"))
+                            (count no-data) " countries with no data"
+                            (when (seq skipped-c)
+                              (str " · " (count skipped-c) " countries SKIPPED (budget)"))))
               (-> (pmap-limited api-concurrency (fn [[proj titles]] (fetch-qids proj titles)) batches)
                   (.then (fn [results]
                            (let [title->qid   (apply merge {} (map :qids results))
                                  qid-failed   (reduce + 0 (map :failed results))
+                                 qid-skipped  (reduce + 0 (keep :skipped results))
                                  qids         (vec (distinct (vals title->qid)))]
                              (println (str "  qid: " (count title->qid) "/" (count ok-rows) " resolved"
                                            (when (pos? qid-failed)
-                                             (str " · " qid-failed " titles in FAILED batches"))))
+                                             (str " · " qid-failed " titles in FAILED batches"))
+                                           (when (pos? qid-skipped)
+                                             (str " · " qid-skipped " titles SKIPPED (budget)"))))
                              (-> (pmap-limited api-concurrency fetch-claims (partition-all 50 qids))
                                  (.then (fn [claim-results]
                                           {:rows        ok-rows
                                            :no-data     no-data
+                                           :skipped-c   skipped-c
                                            :title->qid  title->qid
                                            :qid-failed  qid-failed
+                                           :qid-skipped qid-skipped
                                            :claim-failed (reduce + 0 (map :failed claim-results))
+                                           :claim-skipped (reduce + 0 (keep :skipped claim-results))
                                            :claims      (apply merge {} (map :claims claim-results))}))))))
                   (.then
-                    (fn [{:keys [rows no-data title->qid claims qid-failed claim-failed]}]
+                    (fn [{:keys [rows no-data skipped-c title->qid claims
+                                 qid-failed claim-failed qid-skipped claim-skipped]}]
                       (let [enriched
                             (mapv (fn [r]
                                     (let [qid  (get title->qid [(:project r) (:article r)])
@@ -331,7 +370,10 @@
                                    :era-dated           (count (filter :work-era final))
                                    :era-undated         (count (remove :work-era final))
                                    :qid-batch-failed    qid-failed
-                                   :claim-batch-failed  claim-failed})
+                                   :claim-batch-failed  claim-failed
+                                   :countries-skipped   skipped-c
+                                   :qid-skipped         qid-skipped
+                                   :claim-skipped       claim-skipped})
                             datoms (core/->datoms
                                      {:observed-on date-str
                                       :rows        final
@@ -353,9 +395,13 @@
                         (println (str "  era:  " (:era/dated cov) " dated, "
                                       (:era/undated cov) " undated"))
                         (when (:enrichment/degraded? cov)
-                          (println (str "  DEGRADED: " (:qid/batch-failed cov) " titles and "
-                                        (:claim/batch-failed cov)
-                                        " qids were in failed batches — enrichment is incomplete")))
+                          (println (str "  DEGRADED: failed batches "
+                                        (:qid/batch-failed cov) " titles / "
+                                        (:claim/batch-failed cov) " qids · budget-skipped "
+                                        (count (:countries/skipped-budget cov)) " countries / "
+                                        (:qid/skipped-budget cov) " titles / "
+                                        (:claim/skipped-budget cov) " qids"
+                                        " — the observation is partial and says so")))
                         (println "  audience-generation: :uncomputable-until-measured"))))))))
         (.catch (fn [e]
                   (js/console.error "hayari collect failed:" (str e))
