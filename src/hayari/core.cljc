@@ -524,6 +524,55 @@
               (count pairs))})))
 
 ;; ---------------------------------------------------------------------------
+;; The committed summary  (what the workspace query plane can actually load)
+;; ---------------------------------------------------------------------------
+
+(defn country-day-summary
+  "One entity per (country, day): small enough to commit, joinable by country.
+
+  Every observation datom carries `:source/dataset \"hayari\"`, which claims
+  membership of the workspace query plane — but the raw rows are gitignored, so
+  for the first five waves that claim was not true of anything a reader could
+  load. This is the part that is small enough to keep in git and therefore the
+  part that makes the claim real.
+
+  `:hayari.summary/country-iso2` joins to the first two characters of
+  `:company/jurisdiction` in the LEI plane, which carries ISO 3166-1 alpha-2
+  (sometimes with a subdivision, `US-DE`). Rolled-up distributions travel as
+  `pr-str` strings, the same shape `:adr/body` and `tos/*` use, because a datom
+  value has to be flat."
+  [datoms]
+  (let [rows (filter :hayari/observed-on datoms)]
+    (vec
+      (for [[[day country] rs] (sort-by key (group-by (juxt :hayari/observed-on
+                                                            :hayari/country-iso2)
+                                                      rows))
+            :let [top (first (sort-by #(- (or (:hayari/views %) 0)) rs))
+                  works (count (distinct (map #(work-key {:qid     (:hayari/wikidata-qid %)
+                                                          :project (:hayari/project %)
+                                                          :article (:hayari/article %)})
+                                              rs)))]]
+        (cond-> {:source/dataset               "hayari"
+                 :hayari.summary/observed-on   day
+                 :hayari.summary/country-iso2  country
+                 :hayari.summary/rows          (count rs)
+                 :hayari.summary/works         works
+                 :hayari.summary/views-total   (reduce + 0 (map #(or (:hayari/views %) 0) rs))
+                 :hayari.summary/domains       (pr-str (frequencies (keep :hayari/domain rs)))
+                 :hayari.summary/kinds         (pr-str (frequencies (keep :hayari/kind rs)))
+                 :hayari.summary/eras          (pr-str (frequencies (keep :hayari/work-era rs)))}
+          (:hayari/region-name (first rs))
+          (assoc :hayari.summary/region-name (:hayari/region-name (first rs)))
+          (:hayari/subregion-name (first rs))
+          (assoc :hayari.summary/subregion-name (:hayari/subregion-name (first rs)))
+          (:hayari/article top)
+          (assoc :hayari.summary/top-article (:hayari/article top))
+          (:hayari/wikidata-qid top)
+          (assoc :hayari.summary/top-qid (:hayari/wikidata-qid top))
+          (:hayari/kind top)
+          (assoc :hayari.summary/top-kind (:hayari/kind top)))))))
+
+;; ---------------------------------------------------------------------------
 ;; Corpus targets  (what to actually fetch the text and the entity for)
 ;; ---------------------------------------------------------------------------
 

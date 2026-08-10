@@ -93,6 +93,33 @@ consumer は同じものとして読んでしまう。
 navigation だけで観測行にならなかった —— **feed には居るが findings には居ない**。
 reach を語るときは後者を引く。
 
+## workspace の query 面に載る部分（commit される唯一のデータ）
+
+`data/hayari-summary.edn` —— **(国, 日) ごとに 1 entity** と年別カバレッジ 1 entity。
+実測 122 country-day で 78 KB なので git に置ける。
+
+**これが無い間、全観測行が `:source/dataset "hayari"` を付けて query 面への所属を
+主張していたのに、`manifest/edn-query.cljs` は hayari を 1 件も読んでいなかった。**
+観測本体は .gitignore 対象なので、面に載せられるのは要約だけ。
+
+```clojure
+{:source/dataset              "hayari"
+ :hayari.summary/observed-on  "2026-08-08"
+ :hayari.summary/country-iso2 "JP"          ; ← join key
+ :hayari.summary/region-name  "Asia"
+ :hayari.summary/rows 25  :hayari.summary/works 25
+ :hayari.summary/views-total  1234567
+ :hayari.summary/top-article  "..."  :hayari.summary/top-qid "Q..."
+ :hayari.summary/domains "{:culture 5, :person 12}"   ; pr-str（datom 値は平坦でなければならない）
+ :hayari.summary/eras    "{2020 10, 2010 3}"}
+```
+
+`:hayari.summary/country-iso2` は **LEI 面の `:company/jurisdiction` の先頭 2 文字**と
+join できる（実測: あちらは `US-DE` のような下位区分付きの値も持つ）。
+
+⚠ **要約は snapshot であって live ではない。** 誰かが collect を回して commit を
+着地させた時点の値で、その cadence はまだ決まっていない（corpus と同じ未決）。
+
 ## 観測は蓄積する（上書きしない）
 
 実行のたびに `data/hayari.datoms.edn` へ**溶け込ませる**。同じ日を測り直せばその日を

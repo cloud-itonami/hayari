@@ -5,6 +5,7 @@
   fixtures would have let the meta-article filter and the multi-date era rule
   pass while being wrong against the real feed."
   (:require [clojure.test :refer [deftest is testing run-tests]]
+            [cljs.reader]
             [hayari.core :as core]))
 
 (deftest meta-article-rejection
@@ -414,6 +415,39 @@
                                           :entity-requested 1 :entity-fetched 1
                                           :entity-failed 0 :entity-skipped 0
                                           :retrieved-on "d"})))))))
+
+(deftest summary-is-one-entity-per-country-day
+  (let [ds [{:hayari/observed-on "2026-08-07" :hayari/country-iso2 "JP"
+             :hayari/project "ja.wikipedia" :hayari/article "A" :hayari/wikidata-qid "Q1"
+             :hayari/views 100 :hayari/kind :anime/film :hayari/domain :culture
+             :hayari/work-era 2010 :hayari/region-name "Asia"}
+            {:hayari/observed-on "2026-08-07" :hayari/country-iso2 "JP"
+             :hayari/project "ja.wikipedia" :hayari/article "B" :hayari/wikidata-qid "Q2"
+             :hayari/views 50 :hayari/kind :person :hayari/domain :person}
+            {:hayari/observed-on "2026-08-08" :hayari/country-iso2 "JP"
+             :hayari/project "ja.wikipedia" :hayari/article "A" :hayari/wikidata-qid "Q1"
+             :hayari/views 90 :hayari/domain :culture}]
+        s  (core/country-day-summary ds)]
+    (testing "one entity per (country, day), carrying the dataset tag that makes
+              the workspace query plane able to find it"
+      (is (= 2 (count s)))
+      (is (every? #(= "hayari" (:source/dataset %)) s)))
+    (testing "counts and totals are per country-day"
+      (let [d1 (first (filter #(= "2026-08-07" (:hayari.summary/observed-on %)) s))]
+        (is (= 2 (:hayari.summary/rows d1)))
+        (is (= 2 (:hayari.summary/works d1)))
+        (is (= 150 (:hayari.summary/views-total d1)))))
+    (testing "the most-viewed row of the day is named, so the summary is
+              readable without the raw observations beside it"
+      (let [d1 (first (filter #(= "2026-08-07" (:hayari.summary/observed-on %)) s))]
+        (is (= "A" (:hayari.summary/top-article d1)))
+        (is (= "Q1" (:hayari.summary/top-qid d1)))))
+    (testing "distributions travel as strings because a datom value must be flat"
+      (let [d1 (first (filter #(= "2026-08-07" (:hayari.summary/observed-on %)) s))]
+        (is (string? (:hayari.summary/domains d1)))
+        (is (= {:culture 1 :person 1} (cljs.reader/read-string (:hayari.summary/domains d1))))))
+    (testing "the join key is the plain ISO2 country code"
+      (is (= #{"JP"} (set (map :hayari.summary/country-iso2 s)))))))
 
 (defn -main [& _] (run-tests 'hayari.core-test))
 (apply -main *command-line-args*)

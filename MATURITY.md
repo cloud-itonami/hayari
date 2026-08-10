@@ -11,11 +11,11 @@ not evidence, and that applies to this file first.
 | axis | state | evidence |
 |---|---|---|
 | **substrate** | `src/hayari/{core.cljc,collect.cljs,corpus.cljs,xmile.cljc,simulate.cljs}` | decision core is pure and I/O-free; effects and the XMILE engine are separate |
-| **test** | 30 tests / 133 assertions | 25/115 core (no sibling checkout needed) + 5/18 XMILE integration |
+| **test** | 31 tests / 143 assertions | 26/125 core (no sibling checkout needed) + 5/18 XMILE integration |
 | **governed** | **none** | hayari publishes no assessments and actuates nothing, so it carries no governor. See "Why no governor" below |
 | **ingest** | 3 live public APIs, unauthenticated | Wikimedia pageviews · MediaWiki pageprops · Wikidata claims+labels. All probed 2026-08-10 |
 | **docs** | README · MATURITY.md · `docs/operator-quickstart.md` · ADR-2608103000 | quickstart carries real pasted output, not invented output |
-| **surface** | registry entry + XMILE projection | `manifest/observatories.edn`; `data/hayari-xmile.edn` is consumable by `dynamics` |
+| **surface** | registry entry + **workspace query plane** + XMILE projection | `manifest/edn-query.cljs` loads `data/hayari-summary.edn`; `data/hayari-xmile.edn` is consumable by `dynamics` |
 | **fresh** | daily | registry `:change-rate 1.0`, matching the source's daily granularity |
 
 ### Why no governor
@@ -128,7 +128,15 @@ Corpus depth.
 ## R1 — the time axis (not yet reached)
 
 - [x] Observations accumulate instead of overwriting
-- [ ] **Decide where history lives.** `data/hayari.datoms.edn` is gitignored per
+- [x] **The committed half exists.** `data/hayari-summary.edn` — one entity per
+      (country, day) plus era coverage, 78 KB for 122 country-days — is tracked
+      and loaded by `manifest/edn-query.cljs`. For five waves every observation
+      row carried `:source/dataset "hayari"`, claiming membership of a query
+      plane that had never loaded a single one of them
+- [ ] **The summary is a snapshot, not a feed.** It is whatever the last person
+      to run collect committed. Nothing lands it on a cadence, so freshness is
+      unowned — the same open question as the corpus
+- [ ] **Decide where the RAW history lives.** `data/hayari.datoms.edn` is gitignored per
       the observatory convention, so today the history exists only on whichever
       machine ran the collector. A year-by-year record needs a home: a DataLad
       dataset (as `hirameki-patents` does) or a summary projection under
