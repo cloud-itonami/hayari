@@ -611,11 +611,18 @@
                        "[\n"
                        (str/join "\n" (map pr-str (cons era-ent summary)))
                        "\n]\n"))
-                (println (str "  summary " sum-path " — " (count summary) " country-days")))
-              (println (str "  years " era-from "-" era-to ": "
+                (println (str "  summary " sum-path " — " (count summary) " country-days · "
+                              "years [committed, all days]: " (:years-populated ec)
+                              " populated / " (:years-empty ec) " empty"
+                              (when-let [o (:oldest-year ec)] (str " · oldest " o)))))
+              ;; Two era views exist and they measure different things, so the
+              ;; line says which. This one is over the raw THIS machine holds
+              ;; (distinct works); the summary file carries the committed view
+              ;; over every day ever observed (country-days).
+              (println (str "  years " era-from "-" era-to " [this machine's raw]: "
                             (:years-populated eras) " populated / "
                             (:years-empty eras) " empty · "
-                            (:works-total eras) " works"
+                            (:works-total eras) " distinct works"
                             (when-let [o (:oldest-year eras)] (str " · oldest " o))
                             (when (pos? (:outside-range eras))
                               (str " · " (:outside-range eras) " dated outside the range"))))

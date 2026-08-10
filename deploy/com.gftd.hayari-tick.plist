@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  hayari 流行 — one small increment every 15 minutes.
+
+  Install:  cp deploy/com.gftd.hayari-tick.plist ~/Library/LaunchAgents/
+            launchctl load  ~/Library/LaunchAgents/com.gftd.hayari-tick.plist
+  Stop:     launchctl unload ~/Library/LaunchAgents/com.gftd.hayari-tick.plist
+  Watch:    tail -f ~/.gftd/hayari-tick.log
+
+  Each run collects ONE day not held yet and commits only if the committed
+  summary changed. The backfill walks backwards to 2021-01-01, where Wikimedia's
+  per-country dataset begins, and then has nothing left to do — so this is a
+  finite job on a timer, not a daemon that runs forever. From 2026-08 that is
+  roughly 2,000 days, about three weeks at four ticks an hour.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>            <string>com.gftd.hayari-tick</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-lc</string>
+    <string>exec nbb "$HOME/.gftd/hayari-tick/bin/tick.cljs" --budget-ms 700000</string>
+  </array>
+  <key>StartInterval</key>    <integer>900</integer>
+  <key>RunAtLoad</key>        <false/>
+  <key>StandardOutPath</key>  <string>/tmp/hayari-tick.log</string>
+  <key>StandardErrorPath</key><string>/tmp/hayari-tick.log</string>
+  <key>ProcessType</key>      <string>Background</string>
+  <!-- One tick at a time. A 249-country sweep takes ~60s, well inside 900s,
+       but a throttled one can take its full 700s budget and must not overlap
+       the next. -->
+  <key>AbandonProcessGroup</key><false/>
+</dict>
+</plist>
