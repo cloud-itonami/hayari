@@ -507,6 +507,12 @@
                     (str/split c #",")
                     (vec (keys regions)))
         budget-ms (js/parseInt (or (:budget-ms opts) (str default-budget-ms)) 10)
+        ;; The per-year axis runs from 1900 by default. Works older than that
+        ;; are not dropped — they are counted as :outside-range, so the choice
+        ;; of floor stays visible instead of quietly deleting antiquity.
+        era-from  (js/parseInt (or (:era-from opts) "1900") 10)
+        era-to    (js/parseInt (or (:era-to opts)
+                                   (subs (.toISOString (js/Date.)) 0 4)) 10)
         dates     (day-range date-str days)
         ;; Existing observations are read BEFORE anything is fetched, so a run
         ;; that dies partway cannot destroy the history it was going to extend.
@@ -526,7 +532,30 @@
         (.then
           (fn [fresh]
             (let [{:keys [coverage rows]} (core/merge-observations prior fresh)
-                  all  (core/renumber (concat coverage rows))
+                  ;; Computed over the ACCUMULATED set, not this run's rows: the
+                  ;; per-year axis is a property of everything collected so far,
+                  ;; and recomputing it per run is what keeps it true as history
+                  ;; grows.
+                  eras (core/year-coverage rows era-from era-to)
+                  era-entity {:source/dataset "hayari"
+                              :hayari.era-coverage/from (:from eras)
+                              :hayari.era-coverage/to (:to eras)
+                              :hayari.era-coverage/years-populated (:years-populated eras)
+                              :hayari.era-coverage/years-empty (:years-empty eras)
+                              :hayari.era-coverage/oldest-year (:oldest-year eras)
+                              :hayari.era-coverage/newest-year (:newest-year eras)
+                              :hayari.era-coverage/works-total (:works-total eras)
+                              :hayari.era-coverage/outside-range (:outside-range eras)
+                              :hayari.era-coverage/by-year (pr-str (:by-year eras))
+                              :hayari.era-coverage/note
+                              (str "Distinct works per single year of first publication. "
+                                   "hayari measures TODAY's attention, which is mostly on "
+                                   "recent things, so empty years are expected and are listed "
+                                   "with zeros rather than omitted. Depth is the lever that "
+                                   "reaches older work: measured 2026-08-08, JP at --top 400 "
+                                   "yielded 34 pre-2000 works in one day where --top 25 "
+                                   "yielded almost none.")}
+                  all  (core/renumber (concat coverage [era-entity] rows))
                   days-held (sort (distinct (keep :hayari/observed-on all)))]
               (fs/mkdirSync (path/dirname out-path) #js {:recursive true})
               (fs/writeFileSync
@@ -541,6 +570,13 @@
               (println (str "  wrote " out-path " — " (count all) " datoms across "
                             (count days-held) " day(s): "
                             (str/join ", " days-held)))
+              (println (str "  years " era-from "-" era-to ": "
+                            (:years-populated eras) " populated / "
+                            (:years-empty eras) " empty · "
+                            (:works-total eras) " works"
+                            (when-let [o (:oldest-year eras)] (str " · oldest " o))
+                            (when (pos? (:outside-range eras))
+                              (str " · " (:outside-range eras) " dated outside the range"))))
               (println "  audience-generation: :uncomputable-until-measured"))))
         (.catch (fn [e]
                   (js/console.error "hayari collect failed:" (str e))

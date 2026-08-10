@@ -22,7 +22,7 @@ west update --fetch smart org-oasis-open-xmile
 $ nbb --classpath src:test test/hayari/core_test.cljs
 Testing hayari.core-test
 
-Ran 21 tests containing 92 assertions.
+Ran 23 tests containing 105 assertions.
 0 failures, 0 errors.
 ```
 
@@ -99,6 +99,37 @@ hayari: 2026-08-07 · 249 countries · top 5 · budget 3s
 
 **Read `:enrichment/degraded?` before quoting any count.** A throttled run once
 reported 1 QID out of 874 while every other counter looked healthy.
+
+## 3b. Reach the old work
+
+Every run prints the single-year axis and writes it as
+`:hayari.era-coverage/by-year`, with the empty years present as zeros:
+
+```
+$ nbb src/hayari/collect.cljs --date 2026-08-08 --top 200 --countries JP,GB
+  2026-08-08: 400 rows from 2 countries · 0 no data
+    qid 399/400 · kind 355 · domain 355 · genre 115 · occ 263 · era 94 · dropped 7 (ns 1)
+  wrote ... — 395 datoms across 1 day(s): 2026-08-08
+  years 1900-2026: 43 populated / 84 empty · 86 works · oldest 1903 · 7 dated outside the range
+```
+
+**Depth is the lever, not country count.** Measured 2026-08-08 on JP alone for
+one day:
+
+| | dated works |
+|---|---|
+| `--top 25` | almost nothing before 2000 |
+| `--top 400` | 91 dated, **34 of them pre-2000** — 1950s 4, 1960s 5, 1970s 1, 1980s 3, 1990s 9, oldest 660s |
+
+The per-country endpoint serves up to 1000 articles; old work sits in the long
+tail of daily attention, so `--top` decides whether you reach it. Depth costs
+enrichment time, which is why the registry's daily run stays at 25 — that job's
+purpose is the time series. Run depth separately:
+
+```bash
+nbb src/hayari/collect.cljs --top 300 --days 4 --budget-ms 1500000 \
+    --countries JP,US,GB,FR,DE,IT,ES,KR,TW,BR,IN,MX,PL,NL,SE,RU,TR
+```
 
 ## 4. Fit and simulate the decay
 

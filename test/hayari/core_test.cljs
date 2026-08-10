@@ -330,5 +330,43 @@
     (is (core/wikimedia-meta? ["Q104635718"]))
     (is (core/wikimedia-meta? ["Q15633587"]))))
 
+(deftest year-coverage-shows-the-empty-years
+  (let [ds [{:hayari/work-year 1954 :hayari/wikidata-qid "Q1" :hayari/observed-on "d"}
+            {:hayari/work-year 1954 :hayari/wikidata-qid "Q1" :hayari/observed-on "d"}
+            {:hayari/work-year 1954 :hayari/wikidata-qid "Q2" :hayari/observed-on "d"}
+            {:hayari/work-year 1957 :hayari/wikidata-qid "Q3" :hayari/observed-on "d"}
+            {:hayari/work-year 1860 :hayari/wikidata-qid "Q4" :hayari/observed-on "d"}]
+        c  (core/year-coverage ds 1950 1960)]
+    (testing "every year in range is present, zeros included — an axis whose
+              empty years are omitted reads as though they were never asked for"
+      (is (= 11 (count (:by-year c))))
+      (is (= 0 (get (:by-year c) 1955))))
+    (testing "distinct WORKS per year, not rows: one film seen in forty
+              countries is one work of its year, not forty"
+      (is (= 2 (get (:by-year c) 1954)))
+      (is (= 1 (get (:by-year c) 1957))))
+    (testing "populated and empty are both counted, and the oldest is named"
+      (is (= 2 (:years-populated c)))
+      (is (= 9 (:years-empty c)))
+      (is (= 1954 (:oldest-year c)))
+      (is (= 1957 (:newest-year c))))
+    (testing "works dated outside the range are counted, never silently clipped"
+      (is (= 1 (:outside-range c))))))
+
+(deftest era-series-keeps-the-undated-visible
+  (let [ds [{:hayari/observed-on "2026-08-07" :hayari/work-era 1960 :hayari/views 10}
+            {:hayari/observed-on "2026-08-07" :hayari/work-era 1960 :hayari/views 5}
+            {:hayari/observed-on "2026-08-07" :hayari/views 100}
+            {:hayari/observed-on "2026-08-08" :hayari/work-era 1960 :hayari/views 12}]
+        s  (core/era-series ds)]
+    (is (= [{:day "2026-08-07" :views 15} {:day "2026-08-08" :views 12}]
+           (:points (get s 1960))))
+    (is (= "1960s" (:label (get s 1960))))
+    (testing "rows with no publication date form their own series — they are the
+              majority, and hiding them would make the dated decades look like
+              the whole of what was observed"
+      (is (contains? s :undated))
+      (is (= "undated" (:label (:undated s)))))))
+
 (defn -main [& _] (run-tests 'hayari.core-test))
 (apply -main *command-line-args*)

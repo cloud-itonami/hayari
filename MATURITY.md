@@ -11,7 +11,7 @@ not evidence, and that applies to this file first.
 | axis | state | evidence |
 |---|---|---|
 | **substrate** | `src/hayari/{core.cljc,collect.cljs,xmile.cljc,simulate.cljs}` | decision core is pure and I/O-free; effects and the XMILE engine are separate |
-| **test** | 26 tests / 110 assertions | 21/92 core (no sibling checkout needed) + 5/18 XMILE integration |
+| **test** | 28 tests / 123 assertions | 23/105 core (no sibling checkout needed) + 5/18 XMILE integration |
 | **governed** | **none** | hayari publishes no assessments and actuates nothing, so it carries no governor. See "Why no governor" below |
 | **ingest** | 3 live public APIs, unauthenticated | Wikimedia pageviews · MediaWiki pageprops · Wikidata claims+labels. All probed 2026-08-10 |
 | **docs** | README · MATURITY.md · `docs/operator-quickstart.md` · ADR-2608103000 | quickstart carries real pasted output, not invented output |
@@ -85,6 +85,19 @@ Classification depth.
 Dating depth.
 
 - [x] P577 → P571 → P1191 → P580, with `:hayari/dated-via` recording which answered
+- [x] **A single-year axis from 1900**, emitted every run as
+      `:hayari.era-coverage/by-year` with the empty years present as zeros.
+      Distinct works per year, not rows. Works dated before 1900 are counted as
+      `:outside-range` rather than clipped — 660s and 1860s works were observed
+- [x] **Depth, not breadth, is what reaches old work.** Measured 2026-08-08,
+      JP for one day: `--top 25` returned almost nothing before 2000, `--top 400`
+      returned 34 pre-2000 works (1950s 4 / 1960s 5 / 1970s 1 / 1980s 3 /
+      1990s 9). The per-country endpoint serves up to 1000; old work lives in
+      the long tail of daily attention
+- [ ] The registry's daily run stays at `--top 25`. Depth costs enrichment time
+      and the daily job's purpose is the time series, not catalogue depth. A
+      deep sweep on a slower cadence is the open item — **and until it has a
+      cadence, the historical years stay as sparse as the table says they are**
 - [ ] Persons dominate the unrated rows. A person is not a work and must not get
       a `work-era`; if a person-era axis is ever wanted it needs its own name and
       its own justification
@@ -106,6 +119,9 @@ Dating depth.
 
 - [x] Attention decay as a one-stock XMILE model, simulated by the standard engine
 - [x] λ, half-life, r² and in-sample MAPE reported per work
+- [x] `--by era` fits the same model to per-decade aggregates, so "does
+      attention to 1960s work drain differently from attention to this year's"
+      is one command. Undated rows form their own series rather than vanishing
 - [x] `--by domain` fits the same model to per-domain aggregates, so the
       question can be "does attention to culture drain differently from
       attention to events". Measured 2026-08-08: person λ=0.19 (half-life

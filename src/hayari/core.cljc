@@ -407,6 +407,60 @@
                                           {:day   d
                                            :views (reduce + 0 (map #(or (:hayari/views %) 0) ds))})))}]))))
 
+(defn era-series
+  "Daily total views per release-DECADE of the work.
+
+  A different stock from `domain-series`: not \"what kind of thing is being
+  looked at\" but \"how old is the thing being looked at\". Rows with no year
+  are grouped under :undated rather than dropped — the undated share is large
+  (most rows are people, who have no publication date) and hiding it would make
+  the dated decades look like the whole picture."
+  [datoms]
+  (let [rows (filter :hayari/observed-on datoms)]
+    (into {}
+          (for [[era rs] (group-by #(or (:hayari/work-era %) :undated) rows)]
+            [era {:label  (if (keyword? era) (name era) (str era "s"))
+                  :kind   era
+                  :points (vec (sort-by :day
+                                        (for [[d ds] (group-by :hayari/observed-on rs)]
+                                          {:day   d
+                                           :views (reduce + 0 (map #(or (:hayari/views %) 0) ds))})))}]))))
+
+(defn year-coverage
+  "Which single years between `from` and `to` are represented at all.
+
+  The observatory measures TODAY's attention, and today's attention is mostly
+  on recent things — so a per-year axis is honest only if the empty years are
+  visible next to the populated ones. This returns the full range with zeros
+  present, not just the years that happened to appear.
+
+  `:works` counts DISTINCT works per year, not rows: one film seen in forty
+  countries is one work of its year, otherwise the axis would measure reach and
+  be labelled as if it measured catalogue depth."
+  [datoms from to]
+  (let [rows   (filter :hayari/work-year datoms)
+        in-rng (filter #(<= from (:hayari/work-year %) to) rows)
+        by-year (into {}
+                      (for [[y rs] (group-by :hayari/work-year in-rng)]
+                        [y (count (distinct (map #(work-key {:qid     (:hayari/wikidata-qid %)
+                                                             :project (:hayari/project %)
+                                                             :article (:hayari/article %)})
+                                                 rs)))]))
+        full   (into (sorted-map) (for [y (range from (inc to))] [y (get by-year y 0)]))
+        populated (filter (comp pos? val) full)
+        outside (- (count rows) (count in-rng))]
+    {:from            from
+     :to              to
+     :by-year         full
+     :years-populated (count populated)
+     :years-empty     (- (count full) (count populated))
+     :oldest-year     (when (seq populated) (key (first populated)))
+     :newest-year     (when (seq populated) (key (last populated)))
+     :works-total     (reduce + 0 (vals full))
+     ;; Works dated outside [from,to] — antiquity, and anything Wikidata dates
+     ;; into the future. Counted rather than clipped silently.
+     :outside-range   outside}))
+
 (defn- day-index
   "Days since the first point, so the fit is over elapsed time rather than
   over row position — a gap in the collection must not compress the curve."

@@ -5,7 +5,7 @@
   `kotoba-lang/org-oasis-open-xmile`.
 
     nbb src/hayari/simulate.cljs [--min-days 3] [--country JP] [--top 10]
-                                 [--by work|domain] [--data PATH] [--out PATH]
+                                 [--by work|domain|era] [--data PATH] [--out PATH]
                                  [--xmile-src PATH]
 
   Needs at least three days in `data/hayari.datoms.edn`; collect them with
@@ -76,6 +76,13 @@
             ;; Same model, different stock.
             series (case by
                      "domain" (hc/domain-series datoms)
+                     ;; --by era asks whether a country's attention to 1960s work
+                     ;; drains at a different rate than its attention to this
+                     ;; year's. Undated rows form their own series rather than
+                     ;; being dropped: they are the majority (people carry no
+                     ;; publication date) and omitting them would make the dated
+                     ;; decades look like the whole of what was observed.
+                     "era"    (hc/era-series datoms)
                      (hc/work-series datoms (if-let [c (:country opts)] {:country c} {})))
             days   (count (distinct (keep :hayari/observed-on datoms)))
             fits   (->> (vals series)
