@@ -2,7 +2,8 @@
 (ns hayari.tick
   "hayari 流行 — one small increment, then stop.
 
-    nbb bin/tick.cljs [--clone PATH] [--budget-ms 700000] [--pin-every-ms 3600000]
+    nbb bin/tick.cljs [--clone PATH] [--budget-ms 700000]
+                      [--root SUPERPROJECT] [--pin-lag 4] [--pin false]
 
   Designed to be run on a short timer (15 minutes). Each tick collects exactly
   ONE day that is not held yet, regenerates the committed summary, and commits
@@ -21,6 +22,15 @@
   not need to live anywhere. The observations are a cache of a public API, not
   an irreplaceable record. What is durable is data/hayari-summary.edn, which is
   tracked in git — and pre-2021 is not obtainable at all, from us or anyone.
+
+  ## What a tick publishes
+
+  A commit here changes nothing anyone can query. The workspace query plane
+  reads data/hayari-summary.edn out of the WEST CHECKOUT's working tree, and
+  that tree follows the pin in manifest/west.yml. So a tick that pushed also
+  advances the pin and runs `west update`, batching the pin by --pin-lag
+  commits: the data is daily, so moving it four times an hour buys no freshness
+  and only writes commits into a repository other sessions are reading.
 
   ## Why it works in its own clone
 
@@ -82,6 +92,96 @@
       (contains? held d)        (recur (shift-date d -1))
       :else                     d)))
 
+;; ---------------------------------------------------------------------------
+;; Publishing: commit -> pin -> checkout -> query plane
+;; ---------------------------------------------------------------------------
+;;
+;; A commit in this repo changes nothing that anyone can query. The workspace
+;; query plane (manifest/edn-query.cljs) reads data/hayari-summary.edn out of
+;; the WEST CHECKOUT's working tree, and that tree follows the pin in
+;; manifest/west.yml. So three more things have to happen after a push, or the
+;; loop quietly accumulates days nobody can see.
+
+(def default-superproject
+  (path/join (or js/process.env.HOME "/tmp") "github" "com-junkawasaki"))
+
+(defn pinned-sha
+  "The hayari revision manifest/west.yml currently pins."
+  [root]
+  (let [f (path/join root "manifest" "west.yml")]
+    (when (fs/existsSync f)
+      (let [lines (str/split-lines (fs/readFileSync f "utf8"))]
+        (loop [ls lines]
+          (cond
+            (empty? ls) nil
+            (re-find #"^    - name: hayari\s*$" (first ls))
+            (some #(second (re-find #"^      revision:\s*([0-9a-f]{40})" %)) (take 4 (rest ls)))
+            :else (recur (rest ls))))))))
+
+(defn- commits-behind
+  "How many hayari commits the pin is behind origin/main, or nil if unknown."
+  [clone pin]
+  (when pin
+    (let [r (git clone "rev-list" "--count" (str pin "..origin/main"))]
+      (when-let [n (:ok r)] (js/parseInt n 10)))))
+
+(defn advance-pin!
+  "Advance the west pin and materialise the checkout, batching by `lag`.
+
+  Batching is deliberate. The data is daily, so a pin that moves four times an
+  hour buys no freshness — it only writes ~2,000 superproject commits over the
+  backfill, in a repository other sessions are working in. Waiting for `lag`
+  commits gives the same data with a quarter of the noise, and `flush?` (set
+  when the backfill has nothing left to collect) makes sure the tail is not left
+  behind at the end."
+  [root clone lag flush?]
+  (let [head (:ok (git clone "rev-parse" "origin/main"))
+        pin  (pinned-sha root)]
+    (cond
+      (not (fs/existsSync (path/join root "manifest" "west.yml")))
+      (println (str "  pin: no superproject at " root " — skipped"))
+
+      (nil? pin)   (println "  pin: no hayari entry in west.yml — skipped")
+      (nil? head)  (println "  pin: cannot read origin/main — skipped")
+      (= pin head) (println "  pin: already current")
+
+      :else
+      (let [behind (or (commits-behind clone pin) 0)]
+        (if (and (< behind lag) (not flush?))
+          (println (str "  pin: " behind " commit(s) behind, batching until " lag
+                        " (data is daily; a pin that moves four times an hour "
+                        "buys no freshness and writes commits other sessions read)"))
+          (let [r (sh "nbb" [(path/join root "scripts" "west-pin-put.cljs") "hayari" head]
+                      {:cwd root})]
+            (if (:error r)
+              (println (str "  pin: advance failed, next tick retries — "
+                            (:status (:error r)) " " (:err (:error r))))
+              ;; west-pin-put writes the new pin as a commit on GitHub, not into
+              ;; the local tree. Without this pull, `west update` reads the STALE
+              ;; local west.yml and checks out the previous pin — measured: it
+              ;; reported success while leaving the plane three days behind.
+              (let [_  (git root "fetch" "--quiet" "origin")
+                    ff (git root "merge" "--ff-only" "--quiet" "origin/main")
+                    u  (if (:error ff)
+                         {:error {:err (str "superproject not fast-forwardable — "
+                                            "someone's work is in the way; "
+                                            "the pin moved but the tree did not")}}
+                         (sh "west" ["update" "--fetch" "smart" "hayari"] {:cwd root}))]
+                (if (:error u)
+                  (println (str "  pin: advanced, but `west update` failed — the plane still "
+                                "reads the old tree: " (:err (:error u))))
+                  ;; west skips a project whose tree is dirty, and says so only in
+                  ;; passing. Check the file, not the exit code.
+                  (let [f (path/join root "orgs" "cloud-itonami" "hayari"
+                                     "data" "hayari-summary.edn")
+                        on-disk (when (fs/existsSync f)
+                                  (count (distinct (keep :hayari.summary/observed-on
+                                                         (edn/read-string
+                                                           (fs/readFileSync f "utf8"))))))]
+                    (println (str "  pin: advanced to " (subs head 0 8)
+                                  " and checkout updated — "
+                                  (or on-disk "?") " day(s) now visible to the query plane"))))))))))))
+
 (defn- ensure-clone [clone]
   (if (fs/existsSync (path/join clone ".git"))
     (let [_ (git clone "fetch" "--quiet" "origin")
@@ -97,7 +197,10 @@
                           (assoc m (keyword (str/replace (first a) #"^--" "")) (second a)))))
         clone  (or (:clone opts)
                    (path/join (or js/process.env.HOME "/tmp") ".gftd" "hayari-tick"))
-        budget (or (:budget-ms opts) "700000")]
+        budget (or (:budget-ms opts) "700000")
+        root   (or (:root opts) default-superproject)
+        lag    (js/parseInt (or (:pin-lag opts) "4") 10)
+        pin?   (not= "false" (:pin opts))]
     (println (str "hayari tick " (subs (.toISOString (js/Date.)) 0 19) "Z"))
     (let [sync (ensure-clone clone)]
       (if (:error sync)
@@ -108,8 +211,11 @@
           (println (str "  held " (count held) " day(s)"
                         (when (seq held) (str ", oldest " (apply min held)))))
           (if (nil? day)
-            (println (str "  backfill complete to the " horizon
-                          " horizon — nothing to add, so nothing is committed"))
+            (do (println (str "  backfill complete to the " horizon
+                              " horizon — nothing to add, so nothing is committed"))
+                ;; Nothing left to collect, so publish whatever is still
+                ;; unpinned rather than leaving the tail stranded.
+                (when pin? (advance-pin! root clone lag true)))
             (do
               (println (str "  collecting " day))
               (let [r (sh "nbb" [(path/join clone "src" "hayari" "collect.cljs")
@@ -141,7 +247,9 @@
                               (if (:error p)
                                 (println (str "  push failed (will retry next tick): "
                                               (:status (:error p))))
-                                (println (str "  committed and pushed " day
-                                              " — " (inc (count held)) " day(s) held"))))))))))))))))))
+                                (do
+                                  (println (str "  committed and pushed " day
+                                                " — " (inc (count held)) " day(s) held"))
+                                  (when pin? (advance-pin! root clone lag false)))))))))))))))))))
 
 (apply -main *command-line-args*)
