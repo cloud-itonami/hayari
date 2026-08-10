@@ -524,6 +524,78 @@
               (count pairs))})))
 
 ;; ---------------------------------------------------------------------------
+;; Corpus targets  (what to actually fetch the text and the entity for)
+;; ---------------------------------------------------------------------------
+
+(defn content-targets
+  "Distinct (project, article) pairs from the observations, most-attended first.
+
+  Ordered by total observed views so that a run cut short by its budget has
+  fetched the things the world was actually looking at, rather than an
+  arbitrary prefix. `:qid` travels along where known so the corpus can be
+  joined to the entity records without a second lookup."
+  [datoms]
+  (->> (filter :hayari/observed-on datoms)
+       (group-by (juxt :hayari/project :hayari/article))
+       (map (fn [[[project article] rs]]
+              {:project project
+               :article article
+               :qid     (some :hayari/wikidata-qid rs)
+               :views   (reduce + 0 (map #(or (:hayari/views %) 0) rs))}))
+       (sort-by (comp - :views))
+       vec))
+
+(defn entity-targets
+  "Distinct Wikidata QIDs from the observations, most-attended first."
+  [datoms]
+  (->> (filter :hayari/wikidata-qid datoms)
+       (group-by :hayari/wikidata-qid)
+       (map (fn [[qid rs]] {:qid qid :views (reduce + 0 (map #(or (:hayari/views %) 0) rs))}))
+       (sort-by (comp - :views))
+       vec))
+
+(def content-license
+  "Wikipedia prose is CC BY-SA 4.0 and requires attribution and share-alike.
+  Wikidata is CC0. Recording that PER RECORD rather than once in a README is
+  the difference between a corpus someone can lawfully reuse and a pile of text
+  whose terms have to be reconstructed later."
+  {:wikipedia {:license "CC-BY-SA-4.0"
+               :license-url "https://creativecommons.org/licenses/by-sa/4.0/"
+               :attribution "Wikipedia contributors"}
+   :wikidata  {:license "CC0-1.0"
+               :license-url "https://creativecommons.org/publicdomain/zero/1.0/"
+               :attribution "Wikidata contributors"}})
+
+(defn corpus-coverage
+  "What the corpus run reached and what it did not."
+  [{:keys [content-requested content-fetched content-failed content-skipped
+           entity-requested entity-fetched entity-failed entity-skipped
+           retrieved-on]}]
+  {:corpus/retrieved-on        retrieved-on
+   :content/requested          content-requested
+   :content/fetched            content-fetched
+   :content/failed             content-failed
+   ;; Skipped means the wall-clock budget ended before we asked. Targets are
+   ;; ordered by attention, so a skipped tail is the least-looked-at material —
+   ;; but it is still absent, and absence gets a number.
+   :content/skipped-budget     content-skipped
+   :entity/requested           entity-requested
+   :entity/fetched             entity-fetched
+   :entity/failed              entity-failed
+   :entity/skipped-budget      entity-skipped
+   :corpus/degraded?           (boolean (or (pos? (or content-failed 0))
+                                            (pos? (or entity-failed 0))
+                                            (pos? (or content-skipped 0))
+                                            (pos? (or entity-skipped 0))))
+   :content/license            (get-in content-license [:wikipedia :license])
+   :entity/license             (get-in content-license [:wikidata :license])
+   :corpus/note
+   (str "Extracts are the lead paragraph the summary endpoint returns, not full "
+        "article text: they are short, they are what a reader sees first, and "
+        "storing whole articles would put a mirror of Wikipedia in a git "
+        "checkout for no analytical gain. Share-alike applies to the extracts.")})
+
+;; ---------------------------------------------------------------------------
 ;; Accumulation across runs
 ;; ---------------------------------------------------------------------------
 

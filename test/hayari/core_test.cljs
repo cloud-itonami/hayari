@@ -368,5 +368,52 @@
       (is (contains? s :undated))
       (is (= "undated" (:label (:undated s)))))))
 
+(deftest corpus-targets-are-ordered-by-attention
+  (let [ds [{:hayari/observed-on "d1" :hayari/project "ja.wikipedia" :hayari/article "A"
+             :hayari/wikidata-qid "Q1" :hayari/views 10}
+            {:hayari/observed-on "d2" :hayari/project "ja.wikipedia" :hayari/article "A"
+             :hayari/wikidata-qid "Q1" :hayari/views 20}
+            {:hayari/observed-on "d1" :hayari/project "en.wikipedia" :hayari/article "B"
+             :hayari/wikidata-qid "Q2" :hayari/views 100}]
+        c (core/content-targets ds)]
+    (testing "most-attended first, so a budget-truncated run fetched what the
+              world was actually looking at rather than an arbitrary prefix"
+      (is (= ["B" "A"] (mapv :article c)))
+      (is (= [100 30] (mapv :views c))))
+    (testing "one article across days is one target, with its views summed"
+      (is (= 2 (count c))))
+    (testing "the QID travels with the target so the two corpora can be joined
+              without a second lookup"
+      (is (= "Q2" (:qid (first c)))))
+    (testing "entities are deduplicated and ordered the same way"
+      (is (= ["Q2" "Q1"] (mapv :qid (core/entity-targets ds)))))))
+
+(deftest corpus-coverage-carries-the-licences
+  (let [cov (core/corpus-coverage {:content-requested 100 :content-fetched 98
+                                   :content-failed 2 :content-skipped 0
+                                   :entity-requested 50 :entity-fetched 50
+                                   :entity-failed 0 :entity-skipped 0
+                                   :retrieved-on "2026-08-10"})]
+    (testing "the two sources are on different terms and both are recorded —
+              Wikipedia prose is share-alike, Wikidata is CC0"
+      (is (= "CC-BY-SA-4.0" (:content/license cov)))
+      (is (= "CC0-1.0" (:entity/license cov))))
+    (testing "a failure degrades the corpus even when most of it arrived"
+      (is (true? (:corpus/degraded? cov))))
+    (testing "a clean run is not degraded"
+      (is (false? (:corpus/degraded?
+                    (core/corpus-coverage {:content-requested 1 :content-fetched 1
+                                           :content-failed 0 :content-skipped 0
+                                           :entity-requested 1 :entity-fetched 1
+                                           :entity-failed 0 :entity-skipped 0
+                                           :retrieved-on "d"})))))
+    (testing "a budget cutoff degrades it too, even with zero failures"
+      (is (true? (:corpus/degraded?
+                   (core/corpus-coverage {:content-requested 10 :content-fetched 4
+                                          :content-failed 0 :content-skipped 6
+                                          :entity-requested 1 :entity-fetched 1
+                                          :entity-failed 0 :entity-skipped 0
+                                          :retrieved-on "d"})))))))
+
 (defn -main [& _] (run-tests 'hayari.core-test))
 (apply -main *command-line-args*)

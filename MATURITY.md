@@ -10,8 +10,8 @@ not evidence, and that applies to this file first.
 
 | axis | state | evidence |
 |---|---|---|
-| **substrate** | `src/hayari/{core.cljc,collect.cljs,xmile.cljc,simulate.cljs}` | decision core is pure and I/O-free; effects and the XMILE engine are separate |
-| **test** | 28 tests / 123 assertions | 23/105 core (no sibling checkout needed) + 5/18 XMILE integration |
+| **substrate** | `src/hayari/{core.cljc,collect.cljs,corpus.cljs,xmile.cljc,simulate.cljs}` | decision core is pure and I/O-free; effects and the XMILE engine are separate |
+| **test** | 30 tests / 133 assertions | 25/115 core (no sibling checkout needed) + 5/18 XMILE integration |
 | **governed** | **none** | hayari publishes no assessments and actuates nothing, so it carries no governor. See "Why no governor" below |
 | **ingest** | 3 live public APIs, unauthenticated | Wikimedia pageviews · MediaWiki pageprops · Wikidata claims+labels. All probed 2026-08-10 |
 | **docs** | README · MATURITY.md · `docs/operator-quickstart.md` · ADR-2608103000 | quickstart carries real pasted output, not invented output |
@@ -44,6 +44,11 @@ no judgement for it to bound. If hayari ever publishes an interpretation
 - [x] Runs with no `--classpath` from any directory (the registry's invocation shape)
 - [x] Accumulates across runs — a day observed is a day kept
 - [x] Attention decay fitted and simulated as OASIS XMILE via `org-oasis-open-xmile`
+- [x] **The content and the entity behind each observation are actually fetched**
+      (`corpus.cljs`): Wikipedia lead extracts and Wikidata labels/descriptions,
+      with the licence stamped on every record — CC BY-SA 4.0 for prose,
+      CC0-1.0 for entities. Targets ordered by attention so a budget-truncated
+      run holds what was actually being looked at
 
 ## R0.x — coverage growth (each is one increment)
 
@@ -101,6 +106,24 @@ Dating depth.
 - [ ] Persons dominate the unrated rows. A person is not a work and must not get
       a `work-era`; if a person-era axis is ever wanted it needs its own name and
       its own justification
+
+Corpus depth.
+
+- [x] Lead extracts, not full articles. The summary endpoint returns the lead
+      paragraph — 167 characters for a feature film, measured. Full text would
+      put a mirror of Wikipedia in a git checkout and answer nothing new
+- [x] Thumbnail **URLs** only, never image bytes: images carry per-file licences
+      that are frequently not CC BY-SA, and holding the bytes would import that
+      problem into this corpus
+- [x] Claims are not re-fetched. `props=claims` measured 109,873 bytes per
+      entity against 438 for language-filtered labels+descriptions, and the
+      claims this observatory asks about are already extracted at collection
+- [ ] Extracts are en/ja-agnostic — they come in the language of the project
+      that was observed. A cross-language comparison of *content* would need a
+      deliberate decision about which language is canonical, and that decision
+      has not been made
+- [ ] The corpus is gitignored like the observations, so it shares R1's open
+      question about where durable history lives
 
 ## R1 — the time axis (not yet reached)
 

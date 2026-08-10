@@ -7,3 +7,5 @@ node_modules/
 # data/m49-regions.edn are inputs and ARE tracked.
 data/hayari.datoms.edn
 data/hayari-xmile.edn
+data/hayari-content.edn
+data/hayari-entities.edn

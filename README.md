@@ -168,6 +168,46 @@ nbb src/hayari/collect.cljs --top 300 --days 4 --budget-ms 1500000 \
     --countries JP,US,GB,FR,DE,IT,ES,KR,TW,BR,IN,MX,PL,NL,SE,RU,TR
 ```
 
+## コンテンツと entity を実際に取得する
+
+観測は「ある国がこれを見た」までしか言わない。`corpus.cljs` は**それが何なのか**を
+取りに行く —— Wikipedia の冒頭抜粋と、Wikidata の entity レコード。
+
+```bash
+nbb src/hayari/corpus.cljs                       # 既定: 記事 2000 / entity 4000、予算 900s
+nbb src/hayari/corpus.cljs --content-limit 600 --entity-limit 2000
+```
+
+出力は 2 つ、**ライセンスが違うので分けてある**:
+
+| ファイル | 中身 | ライセンス |
+|---|---|---|
+| `data/hayari-content.edn` | 冒頭抜粋・説明・正規 URL・サムネ URL・リビジョン | **CC BY-SA 4.0**（帰属 + 継承） |
+| `data/hayari-entities.edn` | ラベル(en/ja)・説明(en/ja)・sitelink 数 | **CC0-1.0** |
+
+**ライセンスは 1 レコードごとに刻む。** README に 1 回書くだけでは、抜粋された時点で
+条件が失われる。`:hayari.content/license` `/license-url` `/attribution` が全行に付く。
+
+### 取らないと決めたもの
+
+- **全文は取らない。** summary endpoint が返すのは冒頭段落で、実測 167 文字（長編映画）。
+  全文を持つと **git checkout の中に Wikipedia の鏡**ができるうえ、抜粋で答えられない
+  問いが増えるわけでもない。
+- **画像の実体は取らない。** サムネの **URL** だけ。画像はファイルごとに別ライセンスで、
+  CC BY-SA とは限らない —— bytes を持つとその問題をこの corpus に取り込むことになる。
+- **claims を再取得しない。** `props=claims` は 1 entity 109,873 バイト（実測）に対し
+  `labels|descriptions` を en|ja に絞れば 438 バイト。しかも必要な claim
+  （P31/P136/P106/P577/P495）は収集時に既に抽出済みで、**250 倍を払って手元にある
+  データを取り直すことになる**。
+- **sitelink は数だけ残す。** 300 言語のリストは 1 entity 5 KB あるが、ここで問いを
+  立てているのは「どれだけ多くの言語版を持つか」だけ。
+
+### 取得順は注目の大きい順
+
+予算で打ち切られた run が**世界が実際に見ていたもの**を持っている状態になる。
+打ち切った分は `:content/skipped-budget` に数えて申告する（順序が良いことは、
+欠けていないことを意味しない）。
+
 ## XMILE — 注目の減衰を system dynamics として計算する
 
 注目は stock である。溜まり、抜けていく。その**抜ける速さ**が作品について知りたい
@@ -248,6 +288,7 @@ source は 3 つとも公開・無認証（2026-08-10 実測）:
 ```
 src/hayari/core.cljc      決定核（純粋・I/O 無し・外部依存なし）— 判断はここだけ
 src/hayari/collect.cljs   effects（nbb）— network / clock / fs はここだけ
+src/hayari/corpus.cljs    本文抜粋 + entity の取得（ライセンスを行ごとに刻む）
 src/hayari/xmile.cljc     XMILE モデルの組み立て（org-oasis-open-xmile を呼ぶ）
 src/hayari/simulate.cljs  当てはめ + 実行のエントリ
 data/kinds.edn            P31 QID → 種別（91 種。label は API 実測値を pin、

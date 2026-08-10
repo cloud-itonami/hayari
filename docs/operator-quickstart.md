@@ -22,7 +22,7 @@ west update --fetch smart org-oasis-open-xmile
 $ nbb --classpath src:test test/hayari/core_test.cljs
 Testing hayari.core-test
 
-Ran 23 tests containing 105 assertions.
+Ran 25 tests containing 115 assertions.
 0 failures, 0 errors.
 ```
 
@@ -130,6 +130,50 @@ purpose is the time series. Run depth separately:
 nbb src/hayari/collect.cljs --top 300 --days 4 --budget-ms 1500000 \
     --countries JP,US,GB,FR,DE,IT,ES,KR,TW,BR,IN,MX,PL,NL,SE,RU,TR
 ```
+
+## 3c. Fetch the content and the entities
+
+The collector records that a country looked at something. This fetches what
+that something is.
+
+```
+$ nbb src/hayari/corpus.cljs --data /tmp/era-test.edn \
+      --content-limit 25 --entity-limit 100
+hayari corpus: 25/393 articles · 100/386 entities · budget 200s
+  content: 25 fetched · 0 failed · 0 skipped → 25 held
+  entity:  100 fetched · 0 failed · 0 skipped → 100 held
+  licences: content CC-BY-SA-4.0 (attribution + share-alike) · entity CC0-1.0
+  wrote data/hayari-content.edn / data/hayari-entities.edn
+```
+
+A content record, as written:
+
+```clojure
+{:hayari.content/project     "en.wikipedia"
+ :hayari.content/article     "Briana_Corrigan"
+ :hayari.content/wikidata-qid "Q4965736"
+ :hayari.content/description "Northern Ireland singer (born 1965)"
+ :hayari.content/extract     "Briana Corrigan is a Northern Irish singer. …"
+ :hayari.content/revision    "1368488189"
+ :hayari.content/revised-at  "2026-08-09T09:13:51Z"
+ :hayari.content/license     "CC-BY-SA-4.0"
+ :hayari.content/attribution "Wikipedia contributors, en.wikipedia.org"}
+```
+
+**The licence is on every record, not just in this file.** Wikipedia prose is
+CC BY-SA 4.0 — attribution and share-alike — and Wikidata is CC0. Written once
+in a README, those terms are lost the moment somebody excerpts the corpus.
+
+Deliberately not fetched: full article text (the extract is the lead paragraph,
+167 characters for a feature film), image bytes (per-file licences, frequently
+not CC BY-SA — only the thumbnail URL is kept), and Wikidata claims
+(`props=claims` measured 109,873 bytes per entity against 438 for
+language-filtered labels, and the claims this observatory uses are already
+extracted at collection time).
+
+Targets are ordered by observed attention, so a run cut short by its budget
+holds what was actually being looked at — and `:content/skipped-budget` says
+how much it did not reach.
 
 ## 4. Fit and simulate the decay
 

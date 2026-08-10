@@ -9,7 +9,8 @@
     "simulate": "nbb src/hayari/simulate.cljs",
     "test": "nbb --classpath src:test test/hayari/core_test.cljs",
     "test:xmile": "nbb --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src test/hayari/xmile_test.cljs",
-    "gen-regions": "nbb scripts/gen_regions.cljs"
+    "gen-regions": "nbb scripts/gen_regions.cljs",
+    "corpus": "nbb src/hayari/corpus.cljs"
   },
   "devDependencies": {
     "nbb": "^1.3.196"
