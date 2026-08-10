@@ -1,0 +1,50 @@
+;; hayari 流行 — Wikidata P31 (instance of) QID -> content kind.
+;;
+;; PROVENANCE: every QID below was resolved against the live Wikidata API on
+;; 2026-08-10 and the `;; label:` comment is the label the API actually
+;; returned, not a label assumed from the QID. One guess was wrong when checked
+;; (Q11086742 is "anime television program", not a season), which is why the
+;; labels are pinned here rather than trusted from memory.
+;;
+;;   curl 'https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q11424&props=labels&languages=en&format=json'
+;;
+;; :rank breaks ties when a work carries several P31 values. Lower wins, and
+;; more specific kinds rank lower, so an "anime film" is not flattened to
+;; "film" merely because Wikidata lists both.
+;;
+;; This table is COVERAGE, not a filter. A P31 that is absent here yields
+;; :unclassified and is counted in the coverage report — it is never guessed at
+;; and never silently dropped. Add a row when a real observation needs one.
+
+{;; --- animation ----------------------------------------------------------
+ "Q20650540" {:kind :anime/film            :rank 10}  ;; label: anime film
+ "Q63952888" {:kind :anime/tv-series       :rank 10}  ;; label: anime television series
+ "Q11086742" {:kind :anime/tv-program      :rank 11}  ;; label: anime television program
+ "Q1107"     {:kind :anime/medium          :rank 40}  ;; label: anime
+ "Q202866"   {:kind :film/animated         :rank 20}  ;; label: animated film
+
+ ;; --- live action --------------------------------------------------------
+ "Q1259759"  {:kind :tv/miniseries         :rank 15}  ;; label: miniseries
+ "Q5398426"  {:kind :tv/series             :rank 20}  ;; label: television series
+ "Q21191270" {:kind :tv/episode            :rank 16}  ;; label: television series episode
+ "Q15416"    {:kind :tv/program            :rank 30}  ;; label: television program
+ "Q11424"    {:kind :film/feature          :rank 25}  ;; label: film
+ "Q24856"    {:kind :film/series           :rank 26}  ;; label: film series
+
+ ;; --- print / interactive ------------------------------------------------
+ "Q8274"     {:kind :manga                 :rank 10}  ;; label: manga
+ "Q7889"     {:kind :game/video            :rank 10}  ;; label: video game
+ "Q7725634"  {:kind :text/literary-work    :rank 30}  ;; label: literary work
+ "Q571"      {:kind :text/book             :rank 35}  ;; label: book
+
+ ;; --- music --------------------------------------------------------------
+ "Q482994"   {:kind :music/album           :rank 20}  ;; label: album
+ "Q134556"   {:kind :music/single          :rank 20}  ;; label: single
+
+ ;; --- not a work ---------------------------------------------------------
+ ;; Kept deliberately. A person or an event topping a country's ranking is a
+ ;; real answer to "what drew attention", and classifying them lets a consumer
+ ;; separate works from news without the observatory pre-deciding which matters.
+ "Q5"        {:kind :person                :rank 50}  ;; label: human
+ "Q1656682"  {:kind :event                 :rank 50}  ;; label: planned event
+ "Q3305213"  {:kind :art/painting          :rank 30}} ;; label: painting

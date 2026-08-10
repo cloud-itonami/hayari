@@ -1,0 +1,15 @@
+{
+  "name": "hayari",
+  "version": "0.1.0",
+  "description": "hayari 流行 — observatory of what a country's public attention is on, and which origin-country and release era that work comes from",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "collect": "nbb --classpath src src/hayari/collect.cljs",
+    "test": "nbb --classpath src:test test/hayari/core_test.cljs",
+    "gen-regions": "nbb scripts/gen_regions.cljs"
+  },
+  "devDependencies": {
+    "nbb": "^1.3.196"
+  }
+}
