@@ -215,6 +215,18 @@
                                              (get q "normalized")))
                          pages (get q "pages")]
                      {:failed 0
+                      ;; MediaWiki reports each page's namespace number, and
+                      ;; ns 0 is the article namespace. Taking it beats matching
+                      ;; title prefixes, which was quietly language-biased: the
+                      ;; prefix list caught "Special:Search" and let through
+                      ;; 특수:검색, 特殊:近期變更 and Specialis:Quaerere, all of
+                      ;; which reached the decay fits as though they were works.
+                      :ns
+                      (into {}
+                            (map (fn [p]
+                                   (let [title (get p "title")]
+                                     [[project (get norm title title)] (get p "ns")]))
+                                 pages))
                       :qids
                       (into {}
                             (keep (fn [p]
@@ -235,7 +247,11 @@
   (keep #(get-in % ["mainsnak" "datavalue" "value" "time"]) (get claims prop)))
 
 (defn fetch-claims
-  "P31 / P577 / P495 for up to 50 QIDs."
+  "P31 (kind), P495 (origin) and the date properties for up to 50 QIDs.
+
+  P571/P1191/P580 are fetched alongside P577 because most rows carried no
+  publication date at all — 765 of 886 on 2026-08-08 — and a work with an
+  inception or a first-performance date is dated, just not by P577."
   [qids]
   (if (past-deadline?)
     (js/Promise.resolve {:failed 0 :skipped (count qids)})
@@ -253,6 +269,9 @@
                                  (let [c (get ent "claims")]
                                    [qid {:p31   (vec (claim-ids c "P31"))
                                          :p577  (vec (claim-times c "P577"))
+                                         :p571  (vec (claim-times c "P571"))
+                                         :p1191 (vec (claim-times c "P1191"))
+                                         :p580  (vec (claim-times c "P580"))
                                          :p495  (first (claim-ids c "P495"))}]))
                                (get (:ok res) "entities")))})))))))
 
@@ -278,22 +297,28 @@
 
 (defn- read-edn [p] (edn/read-string (fs/readFileSync p "utf8")))
 
-(defn -main [& argv]
-  (let [opts       (parse-args argv)
-        root       (or (:root opts) repo-root)
-        date-str   (or (:date opts) (default-date))
-        top-n      (js/parseInt (or (:top opts) "25") 10)
-        out-path   (or (:out opts) (path/join root "data" "hayari.datoms.edn"))
-        regions    (read-edn (path/join root "data" "m49-regions.edn"))
-        kinds      (read-edn (path/join root "data" "kinds.edn"))
-        countries  (if-let [c (:countries opts)]
-                     (str/split c #",")
-                     (vec (keys regions)))
-        budget-ms  (js/parseInt (or (:budget-ms opts) (str default-budget-ms)) 10)
-        ymd*       (ymd date-str)]
-    (reset! deadline (+ (js/Date.now) budget-ms))
-    (println (str "hayari: " date-str " · " (count countries) " countries · top " top-n
-                  " · budget " (quot budget-ms 1000) "s"))
+
+(defn- shift-date
+  "`date-str` moved by `n` days, as YYYY-MM-DD."
+  [date-str n]
+  (let [[y m d] (map #(js/parseInt % 10) (str/split date-str #"-"))
+        t (js/Date. (js/Date.UTC y (dec m) d))]
+    (subs (.toISOString (js/Date. (+ (.getTime t) (* n 86400000)))) 0 10)))
+
+(defn- day-range
+  "`days` consecutive dates ending at `date-str`, oldest first."
+  [date-str days]
+  (mapv #(shift-date date-str (- % (dec days))) (range days)))
+
+;; ---------------------------------------------------------------------------
+;; One day
+;; ---------------------------------------------------------------------------
+
+(defn collect-day
+  "Observe one country-day across the roster. Returns a promise of the datoms
+  for that day (coverage entity first)."
+  [{:keys [date-str countries top-n regions kinds]}]
+  (let [ymd* (ymd date-str)]
     (-> (pmap-limited rest-concurrency #(fetch-country % ymd* top-n) countries)
         (.then
           (fn [per-country]
@@ -307,53 +332,61 @@
                                       (map (fn [titles] [proj (vec titles)])
                                            (partition-all 50 (distinct (map :article rows)))))
                                     by-project)]
-              (println (str "  attention: " (count ok-rows) " rows from "
+              (println (str "  " date-str ": " (count ok-rows) " rows from "
                             (count (distinct (map :country ok-rows))) " countries · "
-                            (count no-data) " countries with no data"
+                            (count no-data) " no data"
                             (when (seq skipped-c)
-                              (str " · " (count skipped-c) " countries SKIPPED (budget)"))))
+                              (str " · " (count skipped-c) " SKIPPED (budget)"))))
               (-> (pmap-limited api-concurrency (fn [[proj titles]] (fetch-qids proj titles)) batches)
                   (.then (fn [results]
-                           (let [title->qid   (apply merge {} (map :qids results))
-                                 qid-failed   (reduce + 0 (map :failed results))
-                                 qid-skipped  (reduce + 0 (keep :skipped results))
-                                 qids         (vec (distinct (vals title->qid)))]
-                             (println (str "  qid: " (count title->qid) "/" (count ok-rows) " resolved"
-                                           (when (pos? qid-failed)
-                                             (str " · " qid-failed " titles in FAILED batches"))
-                                           (when (pos? qid-skipped)
-                                             (str " · " qid-skipped " titles SKIPPED (budget)"))))
+                           (let [title->qid  (apply merge {} (map :qids results))
+                                 title->ns   (apply merge {} (map :ns results))
+                                 qid-failed  (reduce + 0 (map :failed results))
+                                 qid-skipped (reduce + 0 (keep :skipped results))
+                                 qids        (vec (distinct (vals title->qid)))]
                              (-> (pmap-limited api-concurrency fetch-claims (partition-all 50 qids))
                                  (.then (fn [claim-results]
-                                          {:rows        ok-rows
-                                           :no-data     no-data
-                                           :skipped-c   skipped-c
-                                           :title->qid  title->qid
-                                           :qid-failed  qid-failed
-                                           :qid-skipped qid-skipped
+                                          {:rows ok-rows :no-data no-data :skipped-c skipped-c
+                                           :title->qid title->qid :title->ns title->ns
+                                           :qid-failed qid-failed :qid-skipped qid-skipped
                                            :claim-failed (reduce + 0 (map :failed claim-results))
                                            :claim-skipped (reduce + 0 (keep :skipped claim-results))
-                                           :claims      (apply merge {} (map :claims claim-results))}))))))
+                                           :claims (apply merge {} (map :claims claim-results))}))))))
                   (.then
-                    (fn [{:keys [rows no-data skipped-c title->qid claims
+                    (fn [{:keys [rows no-data skipped-c title->qid title->ns claims
                                  qid-failed claim-failed qid-skipped claim-skipped]}]
-                      (let [enriched
+                      (let [;; Two rejections the title filter cannot make.
+                            ;; ns != 0 is MediaWiki's own answer to "is this an
+                            ;; article", in every language at once. P31 catches
+                            ;; list and disambiguation pages, which ARE ns 0 and
+                            ;; do look like ordinary titles. Both are counted
+                            ;; rather than allowed to vanish.
+                            non-article? (fn [r]
+                                           (when-let [n (get title->ns [(:project r) (:article r)])]
+                                             (not= 0 n)))
+                            wiki-meta?   (fn [r]
+                                           (when-let [c (get claims (get title->qid [(:project r) (:article r)]))]
+                                             (core/wikimedia-meta? (:p31 c))))
+                            kept     (vec (remove #(or (non-article? %) (wiki-meta? %)) rows))
+                            ns-n     (count (filter non-article? rows))
+                            meta-n   (- (count rows) (count kept))
+                            enriched
                             (mapv (fn [r]
                                     (let [qid  (get title->qid [(:project r) (:article r)])
                                           c    (get claims qid)
                                           reg  (:ok (core/region-of (:country r) regions))
                                           kind (when c (:ok (core/classify-kind (:p31 c) kinds)))
-                                          yr   (when c (:ok (core/publication-year (:p577 c))))
-                                          era  (when c (:ok (core/work-era (:p577 c))))]
+                                          dt   (when c (:ok (core/dated-by c)))]
                                       (cond-> r
                                         reg  (merge (select-keys reg [:region-m49 :region-name
                                                                       :subregion-m49 :subregion-name]))
                                         qid  (assoc :qid qid)
                                         kind (assoc :kind kind)
-                                        yr   (assoc :work-year yr)
-                                        era  (assoc :work-era era)
+                                        dt   (assoc :work-year (:year dt)
+                                                    :work-era  (:era dt)
+                                                    :dated-via (:via dt))
                                         (:p495 c) (assoc :origin-qid (:p495 c)))))
-                                  rows)
+                                  kept)
                             lifts   (core/cross-country-lift enriched)
                             lift-ix (into {} (map (fn [l] [[(:country l) (:project l) (:article l)] l]) lifts))
                             final   (mapv (fn [r]
@@ -361,53 +394,93 @@
                                               (cond-> r
                                                 l (assoc :lift (:lift l) :observed-in (:observed-in l)))))
                                           enriched)
-                            cov (core/coverage-report
-                                  {:countries-requested (count countries)
-                                   :countries-responded (- (count countries)
-                                                           (count no-data) (count skipped-c))
-                                   :countries-with-rows (count (distinct (map :country final)))
-                                   :countries-no-data   no-data
-                                   :titles-seen         (count final)
-                                   :qid-resolved        (count (filter :qid final))
-                                   :qid-unresolved      (count (remove :qid final))
-                                   :kind-classified     (count (filter :kind final))
-                                   :kind-unclassified   (count (remove :kind final))
-                                   :era-dated           (count (filter :work-era final))
-                                   :era-undated         (count (remove :work-era final))
-                                   :qid-batch-failed    qid-failed
-                                   :claim-batch-failed  claim-failed
-                                   :countries-skipped   skipped-c
-                                   :qid-skipped         qid-skipped
-                                   :claim-skipped       claim-skipped})
-                            datoms (core/->datoms
-                                     {:observed-on date-str
-                                      :rows        final
-                                      :coverage    cov
-                                      :source-urls [(pageviews-url "<ISO2>" ymd*)
-                                                    "https://<project>.org/w/api.php?action=query&prop=pageprops"
-                                                    "https://www.wikidata.org/w/api.php?action=wbgetentities"]})]
-                        (fs/mkdirSync (path/dirname out-path) #js {:recursive true})
-                        (fs/writeFileSync
-                          out-path
-                          (str ";; hayari 流行 — observed " date-str ". GENERATED by src/hayari/collect.cljs.\n"
-                               ";; Entity -1 is the coverage report; read it before quoting any count.\n"
-                               "[\n"
-                               (str/join "\n" (map pr-str datoms))
-                               "\n]\n"))
-                        (println (str "  wrote " out-path " — " (count datoms) " datoms"))
-                        (println (str "  kind: " (:kind/classified cov) " classified, "
-                                      (:kind/unclassified cov) " unclassified"))
-                        (println (str "  era:  " (:era/dated cov) " dated, "
-                                      (:era/undated cov) " undated"))
-                        (when (:enrichment/degraded? cov)
-                          (println (str "  DEGRADED: failed batches "
-                                        (:qid/batch-failed cov) " titles / "
-                                        (:claim/batch-failed cov) " qids · budget-skipped "
-                                        (count (:countries/skipped-budget cov)) " countries / "
-                                        (:qid/skipped-budget cov) " titles / "
-                                        (:claim/skipped-budget cov) " qids"
-                                        " — the observation is partial and says so")))
-                        (println "  audience-generation: :uncomputable-until-measured"))))))))
+                            cov (assoc
+                                  (core/coverage-report
+                                    {:countries-requested (count countries)
+                                     :countries-responded (- (count countries)
+                                                             (count no-data) (count skipped-c))
+                                     :countries-with-rows (count (distinct (map :country final)))
+                                     :countries-no-data   no-data
+                                     :titles-seen         (count final)
+                                     :qid-resolved        (count (filter :qid final))
+                                     :qid-unresolved      (count (remove :qid final))
+                                     :kind-classified     (count (filter :kind final))
+                                     :kind-unclassified   (count (remove :kind final))
+                                     :era-dated           (count (filter :work-era final))
+                                     :era-undated         (count (remove :work-era final))
+                                     :qid-batch-failed    qid-failed
+                                     :claim-batch-failed  claim-failed
+                                     :countries-skipped   skipped-c
+                                     :qid-skipped         qid-skipped
+                                     :claim-skipped       claim-skipped})
+                                  :titles/non-article-dropped meta-n
+                                  :titles/dropped-by-namespace ns-n
+                                  :titles/dropped-by-p31 (- meta-n ns-n))]
+                        (println (str "    qid " (count title->qid) "/" (count rows)
+                                      " · kind " (:kind/classified cov)
+                                      " · era " (:era/dated cov)
+                                      " · dropped " meta-n " (ns " ns-n ")"
+                                      (when (:enrichment/degraded? cov) " · DEGRADED")))
+                        (core/->datoms
+                          {:observed-on date-str
+                           :rows        final
+                           :coverage    cov
+                           :source-urls [(pageviews-url "<ISO2>" ymd*)
+                                         "https://<project>.org/w/api.php?action=query&prop=pageprops"
+                                         "https://www.wikidata.org/w/api.php?action=wbgetentities"]})))))))))))
+
+;; ---------------------------------------------------------------------------
+;; Entry
+;; ---------------------------------------------------------------------------
+
+(defn -main [& argv]
+  (let [opts      (parse-args argv)
+        root      (or (:root opts) repo-root)
+        date-str  (or (:date opts) (default-date))
+        days      (max 1 (js/parseInt (or (:days opts) "1") 10))
+        top-n     (js/parseInt (or (:top opts) "25") 10)
+        out-path  (or (:out opts) (path/join root "data" "hayari.datoms.edn"))
+        regions   (read-edn (path/join root "data" "m49-regions.edn"))
+        kinds     (read-edn (path/join root "data" "kinds.edn"))
+        countries (if-let [c (:countries opts)]
+                    (str/split c #",")
+                    (vec (keys regions)))
+        budget-ms (js/parseInt (or (:budget-ms opts) (str default-budget-ms)) 10)
+        dates     (day-range date-str days)
+        ;; Existing observations are read BEFORE anything is fetched, so a run
+        ;; that dies partway cannot destroy the history it was going to extend.
+        prior     (if (fs/existsSync out-path) (read-edn out-path) [])]
+    (reset! deadline (+ (js/Date.now) budget-ms))
+    (println (str "hayari: " (first dates) (when (< 1 days) (str " .. " (last dates)))
+                  " · " (count countries) " countries · top " top-n
+                  " · budget " (quot budget-ms 1000) "s"
+                  " · prior " (count prior) " datoms"))
+    (-> (reduce (fn [p d]
+                  (.then p (fn [acc]
+                             (.then (collect-day {:date-str d :countries countries
+                                                  :top-n top-n :regions regions :kinds kinds})
+                                    (fn [ds] (into acc ds))))))
+                (js/Promise.resolve [])
+                dates)
+        (.then
+          (fn [fresh]
+            (let [{:keys [coverage rows]} (core/merge-observations prior fresh)
+                  all  (core/renumber (concat coverage rows))
+                  days-held (sort (distinct (keep :hayari/observed-on all)))]
+              (fs/mkdirSync (path/dirname out-path) #js {:recursive true})
+              (fs/writeFileSync
+                out-path
+                (str ";; hayari 流行 — GENERATED by src/hayari/collect.cljs. Do not hand-edit.\n"
+                     ";; Accumulates across runs: one coverage entity per observed day,\n"
+                     ";; then the observations. Read the coverage entity for a day before\n"
+                     ";; quoting any count from that day.\n"
+                     ";; days held: " (count days-held)
+                     (when (seq days-held) (str " (" (first days-held) " .. " (last days-held) ")")) "\n"
+                     "[\n" (str/join "\n" (map pr-str all)) "\n]\n"))
+              (println (str "  wrote " out-path " — " (count all) " datoms across "
+                            (count days-held) " day(s): "
+                            (str/join ", " days-held)))
+              (println "  audience-generation: :uncomputable-until-measured"))))
         (.catch (fn [e]
                   (js/console.error "hayari collect failed:" (str e))
                   (set! (.-exitCode js/process) 1))))))

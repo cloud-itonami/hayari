@@ -20,7 +20,8 @@
 | **国** | ○ | Wikimedia の per-country pageview 集計（ISO 3166-1 alpha-2） |
 | **地域** | ○ | 国 → UN M49 region / sub-region（`data/m49-regions.edn`） |
 | **作品の種別** | ○ | Wikidata P31 → `data/kinds.edn`（anime / TV drama / film / manga / game / …） |
-| **作品の年代** | ○ | Wikidata P577 の**最初の**公開日 → 10 年区切り |
+| **作品の年（1年単位）** | ○ | Wikidata P577 の**最初の**公開日。無ければ P571 → P1191 → P580 の順に落とす（どれが答えたかを `:hayari/dated-via` に残す） |
+| **作品の年代（10年単位）** | ○ | 上の年から導出。年と年代の**両方**を出す |
 | **原産国** | ○ | Wikidata P495（QID のまま。join key として保つ） |
 | **視聴者の世代** | **×** | **どの source も持っていない** |
 
@@ -84,14 +85,68 @@ US 1000 articles   IN 1000   DE 654   FR 449   BR 215   ID 86   KR 30   NG 12   
 2 か国から出した lift と 90 か国から出した lift は違う主張で、分母が見えない
 consumer は同じものとして読んでしまう。
 
+**`:countries/responded` と `:countries/with-rows` を混同しない。** 2026-08-08 の実測で
+前者は 101、後者は 66 だった。差の 35 国は 200 を返したが、閾値を超えた記事が
+navigation だけで観測行にならなかった —— **feed には居るが findings には居ない**。
+reach を語るときは後者を引く。
+
+## 観測は蓄積する（上書きしない）
+
+実行のたびに `data/hayari.datoms.edn` へ**溶け込ませる**。同じ日を測り直せばその日を
+置き換え、新しい日は足す。1 日のスナップショットからは変化が読めず、変化こそが
+stock-flow モデルの主題なので、日が互いを消してはならない。
+
+⚠ **この出力は .gitignore 済み**（observatory 族の既定、`:output-gitignored true`）。
+つまり履歴は**走らせたマシンの中にしか無い**。年単位の恒久的な記録には置き場所の
+決定が要る（DataLad dataset か `90-docs/observatory/` の投影か）。決まるまで
+**年次の履歴は存在しない**——MATURITY.md にそう書いてある。
+
+## XMILE — 注目の減衰を system dynamics として計算する
+
+注目は stock である。溜まり、抜けていく。その**抜ける速さ**が作品について知りたい
+ことで、`Spider-Man` と祝日は同じようには減衰しない。これは system dynamics の問いなので、
+専用の計算式を作らず、system dynamics が既に持つ交換形式で書く。
+
+```
+Attention(0)   = v0
+Decay          = Attention · decay_rate
+d/dt Attention = −Decay
+```
+
+**シミュレータはこの repo に無い。** 方程式言語・検証器・Euler/RK4 積分器は
+`kotoba-lang/org-oasis-open-xmile` が持っており、`dynamics.xmile` の docstring が
+その再実装を名指しで禁じている。ここがやるのはモデルを組んで渡すことだけ。
+当てはめ（`hayari.core/estimate-decay`）は ln V の最小二乗で、XMILE ライブラリに
+依存しない純粋な算術なので、兄弟 checkout 無しでテストできる。
+
+```
+λ=0.5745  half-life=1.21d  r²=0.968  MAPE=9.9%  n=4  Abdul_El-Sayed [:person]
+λ=-0.0713 half-life=growing r²=0.824 MAPE=3.3%  n=4  杀人者的购物中心 [:tv/series]
+```
+
+- **3 点未満は当てはめを拒否する。** 2 点なら直線は必ず完全に通り、r²=1 は
+  持っていない確信のように読める。
+- **λ が負なら注目は増えていた。** 負の half-life は数字に見えて意味が無いので
+  出さない（`growing` と書く）。
+- **MAPE は in-sample。** 当てはめた日を再現するかを言うだけで、予測の主張ではない。
+  出力ファイルの冒頭にもそう書いてある。
+
 ## 走らせる
 
 ```bash
-nbb --classpath src src/hayari/collect.cljs                      # 既定: 2 日前・249 国・top 25
-nbb --classpath src src/hayari/collect.cljs --date 2026-08-07 --top 10 --countries JP,US,KR
-nbb --classpath src:test test/hayari/core_test.cljs               # 決定核のテスト
-nbb scripts/gen_regions.cljs                                      # 地域表の再生成
+nbb src/hayari/collect.cljs                       # 既定: 2 日前・249 国・top 25・予算 480s
+nbb src/hayari/collect.cljs --days 7              # 7 日ぶんを 1 回で（時系列を作る）
+nbb src/hayari/simulate.cljs                      # 減衰を XMILE で当てはめて回す
+nbb --classpath src:test test/hayari/core_test.cljs   # 決定核（外部依存なし）
+nbb scripts/gen_regions.cljs                      # 地域表の再生成
 ```
+
+**`--classpath` は要らない。** 両エントリは `*file*` から自分の `src` を解決する
+（`nbb.classpath/add-classpath`）。登録簿の runner は `nbb <main> <args>` の形で
+起動し、`--classpath` はスクリプト名より前でないと効かないので、**引数では直せない**。
+
+手順と実際の出力は [`docs/operator-quickstart.md`](docs/operator-quickstart.md)、
+現在地は [`MATURITY.md`](MATURITY.md)。
 
 source は 3 つとも公開・無認証（2026-08-10 実測）:
 
@@ -106,9 +161,11 @@ source は 3 つとも公開・無認証（2026-08-10 実測）:
 ## 構造
 
 ```
-src/hayari/core.cljc      決定核（純粋・I/O 無し）— 判断はここだけ
+src/hayari/core.cljc      決定核（純粋・I/O 無し・外部依存なし）— 判断はここだけ
 src/hayari/collect.cljs   effects（nbb）— network / clock / fs はここだけ
-data/kinds.edn            P31 QID → 種別（label は API 実測値を pin）
+src/hayari/xmile.cljc     XMILE モデルの組み立て（org-oasis-open-xmile を呼ぶ）
+src/hayari/simulate.cljs  当てはめ + 実行のエントリ
+data/kinds.edn            P31 QID → 種別（44 種。label は API 実測値を pin）
 data/m49-regions.edn      ISO2 → UN M49（生成物、手編集しない）
 ```
 
@@ -147,3 +204,5 @@ data/m49-regions.edn      ISO2 → UN M49（生成物、手編集しない）
 - **視聴者の属性を推定しない。** 上記のとおり、そこは測定していない。
 - **欠損を埋めない。** QID が引けない記事、P31 が表に無い作品、公開日を持たない項目は
   それぞれ coverage に数えて残す。
+- **人物に作品の年代を付けない。** 未判定行の多くは人物だが、人物は作品ではない。
+  人物の年代軸が欲しくなったら、別の名前と別の正当化が要る。

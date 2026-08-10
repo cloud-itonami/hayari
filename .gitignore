@@ -6,3 +6,4 @@ node_modules/
 # and would otherwise make every daily tick a large commit. data/kinds.edn and
 # data/m49-regions.edn are inputs and ARE tracked.
 data/hayari.datoms.edn
+data/hayari-xmile.edn

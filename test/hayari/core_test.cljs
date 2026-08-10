@@ -161,5 +161,109 @@
     (testing "absent enrichment yields an absent attribute, not a nil one"
       (is (not (contains? (second ds) :hayari/wikidata-qid))))))
 
+
+(deftest namespace-and-p31-rejections
+  (testing "P31 marks Wikimedia machinery that the title filter cannot see —
+            `List of ...` and `X (disambiguation)` look like ordinary titles"
+    (is (core/wikimedia-meta? ["Q13406463"]))
+    (is (core/wikimedia-meta? ["Q11424" "Q4167410"]))
+    (is (not (core/wikimedia-meta? ["Q11424"])))))
+
+(deftest dates-fall-back-in-priority-order
+  (testing "P577 wins when present"
+    (is (= {:year 2010 :era 2010 :via :p577}
+           (:ok (core/dated-by {:p577 ["+2010-01-01T00:00:00Z"]
+                                :p571 ["+1963-01-01T00:00:00Z"]})))))
+  (testing "a work with no publication date is still dated by inception, and
+            records which property answered"
+    (is (= {:year 1963 :era 1960 :via :p571}
+           (:ok (core/dated-by {:p577 [] :p571 ["+1963-11-23T00:00:00Z"]})))))
+  (testing "properties are tried in order, never pooled — pooling would date a
+            2024 series by its 1963 franchise"
+    (is (= 2024 (:year (:ok (core/dated-by {:p577 ["+2024-01-01T00:00:00Z"]
+                                            :p571 ["+1963-01-01T00:00:00Z"]}))))))
+  (testing "no date at all is an error, not a zero"
+    (is (= :no-publication-date
+           (get-in (core/dated-by {:p577 [] :p571 [] :p1191 [] :p580 []}) [:error :reason])))))
+
+(deftest decay-fit-recovers-a-known-rate
+  (testing "a clean exponential is recovered to the rate it was built with"
+    (let [lam 0.35
+          pts (mapv (fn [i] {:day (str "2026-08-0" (inc i))
+                             :views (* 1000 (js/Math.exp (- (* lam i))))})
+                    (range 6))
+          r   (:ok (core/estimate-decay pts))]
+      (is (< (abs (- lam (:lambda r))) 1e-6))
+      (is (< (abs (- 1000 (:v0 r))) 1e-6))
+      (is (< 0.999 (:r2 r)))
+      (is (< (abs (- (/ (js/Math.log 2) lam) (:half-life r))) 1e-6))))
+  (testing "attention that grew reports no half-life rather than a negative one"
+    (let [pts (mapv (fn [i] {:day (str "2026-08-0" (inc i)) :views (* 100 (inc i))}) (range 4))
+          r   (:ok (core/estimate-decay pts))]
+      (is (neg? (:lambda r)))
+      (is (nil? (:half-life r)))))
+  (testing "two points are refused: a line through two points always fits, and
+            r² = 1 would look like confidence it does not have"
+    (is (= :too-few-points
+           (get-in (core/estimate-decay [{:day "2026-08-01" :views 10}
+                                         {:day "2026-08-02" :views 5}])
+                   [:error :reason]))))
+  (testing "a gap in collection stretches the x axis instead of compressing it"
+    (let [tight (:ok (core/estimate-decay [{:day "2026-08-01" :views 1000}
+                                           {:day "2026-08-02" :views 500}
+                                           {:day "2026-08-03" :views 250}]))
+          gapped (:ok (core/estimate-decay [{:day "2026-08-01" :views 1000}
+                                            {:day "2026-08-03" :views 500}
+                                            {:day "2026-08-05" :views 250}]))]
+      (is (< (abs (- (:lambda tight) (* 2 (:lambda gapped)))) 1e-9)
+          "same ratios over twice the elapsed time is half the rate"))))
+
+(deftest series-groups-one-work-across-languages-and-days
+  (let [ds [{:hayari/observed-on "2026-08-07" :hayari/country-iso2 "US"
+             :hayari/project "en.wikipedia" :hayari/article "Odyssey"
+             :hayari/wikidata-qid "Q1" :hayari/views 100 :hayari/kind :film/feature}
+            {:hayari/observed-on "2026-08-07" :hayari/country-iso2 "ES"
+             :hayari/project "es.wikipedia" :hayari/article "La_Odisea"
+             :hayari/wikidata-qid "Q1" :hayari/views 50}
+            {:hayari/observed-on "2026-08-08" :hayari/country-iso2 "US"
+             :hayari/project "en.wikipedia" :hayari/article "Odyssey"
+             :hayari/wikidata-qid "Q1" :hayari/views 90}]
+        s  (core/work-series ds)]
+    (testing "one series, days summed across countries and languages"
+      (is (= 1 (count s)))
+      (is (= [{:day "2026-08-07" :views 150} {:day "2026-08-08" :views 90}]
+             (:points (first (vals s))))))
+    (testing "restricting to one country changes the quantity, not the identity"
+      (is (= [{:day "2026-08-07" :views 100} {:day "2026-08-08" :views 90}]
+             (:points (first (vals (core/work-series ds {:country "US"})))))))))
+
+(deftest history-survives-the-next-run
+  (let [day1 [{:db/id -1 :hayari.coverage/observed-on "2026-08-07"}
+              {:db/id -2 :hayari/observed-on "2026-08-07" :hayari/country-iso2 "JP"
+               :hayari/project "ja.wikipedia" :hayari/article "A" :hayari/views 10}]
+        day2 [{:db/id -1 :hayari.coverage/observed-on "2026-08-08"}
+              {:db/id -2 :hayari/observed-on "2026-08-08" :hayari/country-iso2 "JP"
+               :hayari/project "ja.wikipedia" :hayari/article "A" :hayari/views 20}]
+        {:keys [coverage rows]} (core/merge-observations day1 day2)]
+    (testing "a second run extends the history instead of erasing it"
+      (is (= 2 (count coverage)))
+      (is (= 2 (count rows)))
+      (is (= ["2026-08-07" "2026-08-08"] (mapv :hayari/observed-on rows))))
+    (testing "re-observing the same day replaces that day, never duplicates it"
+      (let [again (core/merge-observations (concat coverage rows)
+                                           [{:db/id -1 :hayari/observed-on "2026-08-08"
+                                             :hayari/country-iso2 "JP" :hayari/project "ja.wikipedia"
+                                             :hayari/article "A" :hayari/views 22}])]
+        (is (= 2 (count (:rows again))))
+        (is (= 22 (:hayari/views (second (:rows again)))))))
+    (testing "renumbering yields unique ids"
+      (let [ids (map :db/id (core/renumber (concat coverage rows)))]
+        (is (= (count ids) (count (distinct ids))))))))
+
+(deftest mape-skips-zero-denominators
+  (is (= 0.0 (:ok (core/mape [10 20] [10 20]))))
+  (is (< (abs (- 0.5 (:ok (core/mape [10] [15])))) 1e-9))
+  (is (= :nothing-to-compare (get-in (core/mape [0 0] [1 2]) [:error :reason]))))
+
 (defn -main [& _] (run-tests 'hayari.core-test))
 (apply -main *command-line-args*)

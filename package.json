@@ -5,8 +5,10 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "collect": "nbb --classpath src src/hayari/collect.cljs",
+    "collect": "nbb src/hayari/collect.cljs",
+    "simulate": "nbb src/hayari/simulate.cljs",
     "test": "nbb --classpath src:test test/hayari/core_test.cljs",
+    "test:xmile": "nbb --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src test/hayari/xmile_test.cljs",
     "gen-regions": "nbb scripts/gen_regions.cljs"
   },
   "devDependencies": {

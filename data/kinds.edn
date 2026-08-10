@@ -41,6 +41,36 @@
  "Q482994"   {:kind :music/album           :rank 20}  ;; label: album
  "Q134556"   {:kind :music/single          :rank 20}  ;; label: single
 
+ ;; --- added 2026-08-10, from measurement -------------------------------
+ ;; These are the P31 values that actually produced :unclassified rows in the
+ ;; 2026-08-08 sweep, ranked by how often. Chosen by counting, not by guessing
+ ;; what a country might look at. Wikimedia list/disambiguation pages appeared
+ ;; in the same ranking and are NOT here — they are rejected as meta in
+ ;; hayari.core/wikimedia-meta-p31, because they are machinery, not subjects.
+ "Q215380"   {:kind :music/group           :rank 20}  ;; label: musical group
+ "Q27020041" {:kind :sport/season          :rank 20}  ;; label: sports season
+ "Q18608583" {:kind :sport/recurring-event :rank 25}  ;; label: recurring sporting event
+ "Q1114461"  {:kind :character/comics      :rank 20}  ;; label: comics character
+ "Q15773347" {:kind :character/film        :rank 20}  ;; label: film character
+ "Q18011172" {:kind :film/project          :rank 27}  ;; label: film project
+ "Q16738832" {:kind :event/criminal-case   :rank 30}  ;; label: criminal case
+ "Q645883"   {:kind :event/military        :rank 30}  ;; label: military operation
+ "Q1445650"  {:kind :event/holiday         :rank 35}  ;; label: holiday
+ "Q2558684"  {:kind :event/world-day       :rank 35}  ;; label: world day
+ "Q15265344" {:kind :org/broadcaster       :rank 40}  ;; label: broadcaster
+ "Q4830453"  {:kind :org/business          :rank 45}  ;; label: business
+ "Q13417114" {:kind :org/noble-family      :rank 45}  ;; label: noble family
+ "Q35127"    {:kind :web/site              :rank 45}  ;; label: website
+ "Q47461344" {:kind :text/written-work     :rank 32}  ;; label: written work
+ "Q13442814" {:kind :text/scholarly-article :rank 33} ;; label: scholarly article
+ "Q41176"    {:kind :place/building        :rank 45}  ;; label: building
+ "Q23413"    {:kind :place/castle          :rank 44}  ;; label: castle
+ "Q1549591"  {:kind :place/city            :rank 46}  ;; label: big city
+ "Q3624078"  {:kind :place/country         :rank 47}  ;; label: sovereign state
+ "Q6256"     {:kind :place/country         :rank 48}  ;; label: country
+ "Q56061"    {:kind :place/admin-area      :rank 49}  ;; label: administrative territorial entity
+ "Q16521"    {:kind :nature/taxon          :rank 45}  ;; label: taxon
+
  ;; --- not a work ---------------------------------------------------------
  ;; Kept deliberately. A person or an event topping a country's ranking is a
  ;; real answer to "what drew attention", and classifying them lets a consumer

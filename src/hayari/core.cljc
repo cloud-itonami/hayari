@@ -105,9 +105,59 @@
       {:ok (* 10 (quot y 10))}
       r)))
 
+(def date-property-order
+  "Wikidata date properties tried in order when dating a work.
+
+  Not merged into one pool: P577 (publication date) is the work's own release,
+  while P571 (inception) can belong to a franchise or a production company and
+  P580 (start time) to a run rather than a debut. Taking the minimum across all
+  of them would silently date a 2024 series by its 1963 franchise. First
+  property that yields a year wins, and which one it was is recorded."
+  [:p577 :p571 :p1191 :p580])
+
+(defn dated-by
+  "First of `date-property-order` that yields a year from `claims`.
+  Returns {:ok {:year y :era decade :via :p577}} or the last error."
+  [claims]
+  (loop [ps date-property-order last-err {:error {:reason :no-date-property}}]
+    (if (empty? ps)
+      last-err
+      (let [p (first ps)
+            r (publication-year (get claims p))]
+        (if-let [y (:ok r)]
+          {:ok {:year y :era (* 10 (quot y 10)) :via p}}
+          (recur (rest ps) r))))))
+
 ;; ---------------------------------------------------------------------------
 ;; Content kind
 ;; ---------------------------------------------------------------------------
+
+(def wikimedia-meta-p31
+  "P31 values that mark a page as Wikimedia machinery rather than a subject.
+
+  The title-based filter cannot catch these: `List of highest-grossing films`
+  and `Mercury (disambiguation)` look like ordinary article titles and were
+  being counted as things a country's public paid attention to. Measured
+  2026-08-10 across one day's 249-country sweep, they were the 5th and 19th
+  most common unclassified P31 values.
+
+  Labels are the ones the live API returned on 2026-08-10, pinned here for the
+  same reason data/kinds.edn pins its own."
+  {"Q13406463" "Wikimedia list article"
+   "Q4167410"  "Wikimedia disambiguation page"
+   "Q4167836"  "Wikimedia category"
+   "Q11266439" "Wikimedia template"
+   "Q11753321" "Wikimedia navigational template"
+   "Q35252665" "MediaWiki non-main namespace"})
+
+(defn wikimedia-meta?
+  "True when P31 marks this as a Wikimedia-internal page.
+
+  Kept separate from `meta-article?` on purpose: that one runs on the title
+  before any network work, this one needs Wikidata. A row rejected here is
+  counted in the coverage report rather than silently vanishing."
+  [p31-qids]
+  (boolean (some wikimedia-meta-p31 p31-qids)))
 
 (defn classify-kind
   "Map Wikidata P31 (instance-of) QIDs to a content kind via `kinds`
@@ -249,6 +299,135 @@
     own first-publication decade, which is a property of the work."})
 
 ;; ---------------------------------------------------------------------------
+;; Attention as a quantity that changes  (input to the XMILE model)
+;; ---------------------------------------------------------------------------
+
+(defn work-series
+  "Group observation datoms into a per-work time series of daily views.
+
+  `opts` may carry :country to restrict to one country; otherwise a work's
+  views are summed across every country that saw it on that day.
+
+  Keyed by `work-key`, so a film that appears under six language editions is
+  one series rather than six — the same identity rule the lift calculation
+  uses, for the same reason."
+  ([datoms] (work-series datoms {}))
+  ([datoms {:keys [country]}]
+   (let [rows (cond->> (filter :hayari/observed-on datoms)
+                country (filter #(= country (:hayari/country-iso2 %))))]
+     (into {}
+           (for [[k rs] (group-by #(work-key {:qid     (:hayari/wikidata-qid %)
+                                              :project (:hayari/project %)
+                                              :article (:hayari/article %)})
+                                  rows)]
+             [k {:label  (:hayari/article (first rs))
+                 :kind   (some :hayari/kind rs)
+                 :points (vec (sort-by :day
+                                       (for [[d ds] (group-by :hayari/observed-on rs)]
+                                         {:day   d
+                                          :views (reduce + 0 (map #(or (:hayari/views %) 0) ds))})))}])))))
+
+(defn- day-index
+  "Days since the first point, so the fit is over elapsed time rather than
+  over row position — a gap in the collection must not compress the curve."
+  [points]
+  (let [->ms (fn [d] (.getTime (new #?(:clj java.util.Date :cljs js/Date) d)))
+        t0   (->ms (:day (first points)))]
+    (mapv (fn [p] (/ (- (->ms (:day p)) t0) 86400000.0)) points)))
+
+(defn estimate-decay
+  "Fit V(t) = V0 · e^(−λt) to a work's daily views by least squares on ln V.
+
+  Returns {:ok {:lambda λ :v0 V0 :n n :r2 r²  :half-life days}} or an error.
+
+  λ is the continuous rate the XMILE model uses directly as
+  `Decay = Attention · lambda`. Points with zero views are dropped rather than
+  clamped: ln 0 has no value, and substituting one would invent a data point.
+
+  Fewer than three points is refused. Two points always fit a line exactly,
+  which would report r² = 1 for a curve that was never tested — the number
+  would look like confidence and carry none."
+  [points]
+  (let [pts (vec (filter #(pos? (or (:views %) 0)) points))]
+    (if (< (count pts) 3)
+      {:error {:reason :too-few-points :n (count pts) :need 3}}
+      (let [xs (day-index pts)
+            ys (mapv #(#?(:clj Math/log :cljs js/Math.log) (:views %)) pts)
+            n  (count xs)
+            mx (/ (reduce + xs) n)
+            my (/ (reduce + ys) n)
+            sxy (reduce + (map (fn [x y] (* (- x mx) (- y my))) xs ys))
+            sxx (reduce + (map (fn [x] (let [d (- x mx)] (* d d))) xs))]
+        (if (zero? sxx)
+          {:error {:reason :no-time-spread :n n}}
+          (let [slope (/ sxy sxx)
+                icpt  (- my (* slope mx))
+                pred  (mapv (fn [x] (+ icpt (* slope x))) xs)
+                ss-res (reduce + (map (fn [y p] (let [d (- y p)] (* d d))) ys pred))
+                ss-tot (reduce + (map (fn [y] (let [d (- y my)] (* d d))) ys))
+                lambda (- slope)]
+            {:ok {:lambda    lambda
+                  :v0        (#?(:clj Math/exp :cljs js/Math.exp) icpt)
+                  :n         n
+                  :r2        (if (zero? ss-tot) 1.0 (- 1.0 (/ ss-res ss-tot)))
+                  ;; Negative λ means attention was still GROWING over the window.
+                  ;; Reported as nil rather than a negative "half-life", which
+                  ;; would read as a number and mean nothing.
+                  :half-life (when (pos? lambda)
+                               (/ (#?(:clj Math/log :cljs js/Math.log) 2) lambda))}}))))))
+
+(defn mape
+  "Mean absolute percentage error between observed and simulated values.
+  The honest scoreboard for whether the fitted model reproduces the days it
+  was fitted on — reported, never used to silently discard a bad fit."
+  [observed simulated]
+  (let [pairs (filter (fn [[o _]] (pos? o)) (map vector observed simulated))]
+    (if (empty? pairs)
+      {:error {:reason :nothing-to-compare}}
+      {:ok (/ (reduce + (map (fn [[o s]]
+                               (/ (#?(:clj Math/abs :cljs js/Math.abs) (- o s)) o))
+                             pairs))
+              (count pairs))})))
+
+;; ---------------------------------------------------------------------------
+;; Accumulation across runs
+;; ---------------------------------------------------------------------------
+
+(defn observation-key
+  "Identity of one observation row: a country's attention to one article on one
+  day. Re-running the same day must replace those rows, not duplicate them."
+  [d]
+  [(:hayari/observed-on d) (:hayari/country-iso2 d)
+   (:hayari/project d) (:hayari/article d)])
+
+(defn merge-observations
+  "Fold `fresh` datoms into `prior` ones, newest run winning per observation.
+
+  Attention is only a time series if days survive each other. The registry
+  gitignores this file and the actor overwrote it every run, so each day erased
+  the last and the collection could never answer anything about change — which
+  is what a stock-and-flow model needs and what a per-year question needs.
+
+  Coverage entities (`:hayari.coverage/observed-on`) are kept one per day for
+  the same reason: a reader must be able to see how partial each day was, not
+  just the most recent one. Renumbering is left to the caller."
+  [prior fresh]
+  (let [obs?    (fn [d] (contains? d :hayari/observed-on))
+        cov?    (fn [d] (contains? d :hayari.coverage/observed-on))
+        by-key  (fn [ds] (into {} (map (juxt observation-key identity) (filter obs? ds))))
+        by-day  (fn [ds] (into {} (map (juxt :hayari.coverage/observed-on identity) (filter cov? ds))))
+        merged-obs (vals (merge (by-key prior) (by-key fresh)))
+        merged-cov (vals (merge (by-day prior) (by-day fresh)))]
+    {:coverage (vec (sort-by :hayari.coverage/observed-on merged-cov))
+     :rows     (vec (sort-by (juxt :hayari/observed-on :hayari/country-iso2 :hayari/rank)
+                             merged-obs))}))
+
+(defn renumber
+  "Assign fresh negative :db/id values to a merged datom sequence."
+  [ds]
+  (vec (map-indexed (fn [i d] (assoc d :db/id (- (inc i)))) ds)))
+
+;; ---------------------------------------------------------------------------
 ;; Datom assembly
 ;; ---------------------------------------------------------------------------
 
@@ -283,6 +462,10 @@
                   ;; would discard precision the source gave us for free.
                   (:work-year r)      (assoc :hayari/work-year (:work-year r))
                   (:work-era r)       (assoc :hayari/work-era (:work-era r))
+                  ;; Which Wikidata property dated this row. A P577 release and
+                  ;; a P571 inception are not equally strong evidence, and a
+                  ;; consumer comparing eras should be able to see which it got.
+                  (:dated-via r)      (assoc :hayari/dated-via (:dated-via r))
                   (:origin-qid r)     (assoc :hayari/origin-country-qid (:origin-qid r))
                   (:lift r)           (assoc :hayari/cross-country-lift (:lift r))
                   (:observed-in r)    (assoc :hayari/observed-in-countries (:observed-in r))))
