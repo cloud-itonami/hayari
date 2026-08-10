@@ -92,13 +92,17 @@
 
 (deftest coverage-declares-the-unmeasurable
   (let [cov (core/coverage-report {:countries-requested 249
-                                   :countries-with-data 100
+                                   :countries-responded 100 :countries-with-rows 80
                                    :countries-no-data ["EG"]
                                    :titles-seen 10 :qid-resolved 8 :qid-unresolved 2
                                    :kind-classified 6 :kind-unclassified 4
                                    :era-dated 5 :era-undated 5})]
     (is (= 249 (:countries/requested cov)))
-    (is (= 100 (:countries/with-data cov)))
+    (testing "responding and yielding an observation are separate counts —
+              measured 2026-08-08, 101 countries answered 200 and only 66
+              produced a single subject row"
+      (is (= 100 (:countries/responded cov)))
+      (is (= 80 (:countries/with-rows cov))))
     (testing "audience generation is never a number"
       (is (= :uncomputable-until-measured (:audience-generation cov)))
       (is (string? (:audience-generation/reason cov))))
@@ -110,7 +114,7 @@
   (testing "countries cut off by our own wall-clock budget are counted apart
             from countries the API had no data for — conflating them would turn
             our scheduling into a fact about the world"
-    (let [cov (core/coverage-report {:countries-requested 249 :countries-with-data 60
+    (let [cov (core/coverage-report {:countries-requested 249 :countries-responded 60 :countries-with-rows 45
                                      :countries-no-data ["EG"]
                                      :countries-skipped ["ZW" "ZM"]
                                      :titles-seen 500 :qid-resolved 100 :qid-unresolved 400
@@ -127,7 +131,7 @@
   (testing "titles lost to a throttled batch are counted apart from titles that
             genuinely have no Wikidata item — the 1/874 run on 2026-08-10 looked
             healthy on every other number"
-    (let [cov (core/coverage-report {:countries-requested 249 :countries-with-data 99
+    (let [cov (core/coverage-report {:countries-requested 249 :countries-responded 99 :countries-with-rows 60
                                      :countries-no-data [] :titles-seen 874
                                      :qid-resolved 1 :qid-unresolved 873
                                      :kind-classified 0 :kind-unclassified 874
@@ -145,6 +149,15 @@
     (is (= -1 (:db/id (first ds))) "entity -1 is the coverage report")
     (is (every? #(= "hayari" (:source/dataset %)) ds))
     (is (= :anime/film (:hayari/kind (second ds))))
+    (testing "year and decade are both emitted, so a consumer that wants
+              1-year granularity is not forced to re-derive it"
+      (let [d (core/->datoms {:observed-on "2026-08-08"
+                              :rows [{:country "JP" :article "A" :project "ja.wikipedia"
+                                      :rank 1 :views 10 :share 1.0
+                                      :work-year 2010 :work-era 2010}]
+                              :coverage {} :source-urls []})]
+        (is (= 2010 (:hayari/work-year (second d))))
+        (is (= 2010 (:hayari/work-era (second d))))))
     (testing "absent enrichment yields an absent attribute, not a nil one"
       (is (not (contains? (second ds) :hayari/wikidata-qid))))))
 

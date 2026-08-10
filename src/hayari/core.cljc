@@ -201,13 +201,20 @@
   Wikimedia's per-country endpoint carries no viewer age, and neither does
   Wikidata. Bucketing works by release decade and calling that a generation
   would be inventing the measurement."
-  [{:keys [countries-requested countries-with-data countries-no-data
+  [{:keys [countries-requested countries-responded countries-with-rows countries-no-data
            titles-seen qid-resolved qid-unresolved
            kind-classified kind-unclassified era-dated era-undated
            qid-batch-failed claim-batch-failed
            countries-skipped qid-skipped claim-skipped]}]
   {:countries/requested   countries-requested
-   :countries/with-data   countries-with-data
+   ;; Answering the API is not the same as yielding an observation, and one
+   ;; number for both flatters the result. Measured 2026-08-08: 101 countries
+   ;; responded 200, but only 66 contributed a single subject row — for the
+   ;; other 35 every article above Wikimedia's privacy threshold was a main
+   ;; page or a search page, so the country is present in the feed and absent
+   ;; from the findings. Quote :countries/with-rows when describing reach.
+   :countries/responded   countries-responded
+   :countries/with-rows   countries-with-rows
    :countries/no-data     (vec countries-no-data)
    ;; Countries the wall-clock budget cut off before they were ever asked.
    ;; Distinct from :countries/no-data — one means the API had nothing above its
@@ -270,6 +277,11 @@
                   (:subregion-name r) (assoc :hayari/subregion-name (:subregion-name r))
                   (:qid r)            (assoc :hayari/wikidata-qid (:qid r))
                   (:kind r)           (assoc :hayari/kind (:kind r))
+                  ;; Both granularities are emitted. The decade is the cohort a
+                  ;; reader usually wants; the year is what was actually sourced
+                  ;; from P577, and rounding it away in the only stored value
+                  ;; would discard precision the source gave us for free.
+                  (:work-year r)      (assoc :hayari/work-year (:work-year r))
                   (:work-era r)       (assoc :hayari/work-era (:work-era r))
                   (:origin-qid r)     (assoc :hayari/origin-country-qid (:origin-qid r))
                   (:lift r)           (assoc :hayari/cross-country-lift (:lift r))

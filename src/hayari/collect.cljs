@@ -307,7 +307,8 @@
                                       (map (fn [titles] [proj (vec titles)])
                                            (partition-all 50 (distinct (map :article rows)))))
                                     by-project)]
-              (println (str "  attention: " (count ok-rows) " rows · "
+              (println (str "  attention: " (count ok-rows) " rows from "
+                            (count (distinct (map :country ok-rows))) " countries · "
                             (count no-data) " countries with no data"
                             (when (seq skipped-c)
                               (str " · " (count skipped-c) " countries SKIPPED (budget)"))))
@@ -342,12 +343,14 @@
                                           c    (get claims qid)
                                           reg  (:ok (core/region-of (:country r) regions))
                                           kind (when c (:ok (core/classify-kind (:p31 c) kinds)))
+                                          yr   (when c (:ok (core/publication-year (:p577 c))))
                                           era  (when c (:ok (core/work-era (:p577 c))))]
                                       (cond-> r
                                         reg  (merge (select-keys reg [:region-m49 :region-name
                                                                       :subregion-m49 :subregion-name]))
                                         qid  (assoc :qid qid)
                                         kind (assoc :kind kind)
+                                        yr   (assoc :work-year yr)
                                         era  (assoc :work-era era)
                                         (:p495 c) (assoc :origin-qid (:p495 c)))))
                                   rows)
@@ -360,7 +363,9 @@
                                           enriched)
                             cov (core/coverage-report
                                   {:countries-requested (count countries)
-                                   :countries-with-data (- (count countries) (count no-data))
+                                   :countries-responded (- (count countries)
+                                                           (count no-data) (count skipped-c))
+                                   :countries-with-rows (count (distinct (map :country final)))
                                    :countries-no-data   no-data
                                    :titles-seen         (count final)
                                    :qid-resolved        (count (filter :qid final))
