@@ -272,7 +272,13 @@
                     (if (:error r)
                       (println (str "  custody: " d " raw unavailable at " src
                                     " — re-fetchable, not lost"))
-                      (sh "nbb" [(path/join clone "bin" "persist.cljs") "--day" d]
+                      ;; `--data` must be named. Its default points at the
+                      ;; single-machine clone (~/.gftd/hayari-tick), so a mirror
+                      ;; running from a different clone silently archived
+                      ;; nothing and said 「新しい日は無い」 — measured 2026-08-11.
+                      (sh "nbb" [(path/join clone "bin" "persist.cljs")
+                                 "--day" d
+                                 "--data" (path/join clone "data" "hayari.datoms.edn")]
                           {:cwd clone :stdio "inherit"})))))
               (advance-pin! root clone lag (empty? new-days)))))))))
 
@@ -325,11 +331,16 @@
     (println (str "hayari tick " (subs (.toISOString (js/Date.)) 0 19) "Z"
                   " · mode " mode " · publishing to " remote))
     (if (= mode "mirror")
-      (let [sync (ensure-clone clone "rad")]
-        (if (:error sync)
-          (do (println (str "  clone/sync failed: " (pr-str (:error sync))))
-              (set! (.-exitCode js/process) 1))
-          (mirror! clone root lag (:raw-from opts))))
+      ;; **No reset here.** `ensure-clone` fast-forwards to the remote before
+      ;; anything else runs, which would make `mirror!` compare the merged tree
+      ;; against itself: new days always zero, custody never invoked. Measured
+      ;; 2026-08-11 — the first mirror run reported `nothing new` while two days
+      ;; had in fact arrived. The mirror does its own fetch, deliberately.
+      (if-not (fs/existsSync (path/join clone ".git"))
+        (do (println (str "  no clone at " clone " — create it with `rad clone "
+                          "rad:z5GnP9asXmnYf2i9TG2LcV2hvC2W " clone "`"))
+            (set! (.-exitCode js/process) 1))
+        (mirror! clone root lag (:raw-from opts)))
       (let [sync (ensure-clone clone remote)]
       (if (:error sync)
         (do (println (str "  clone/sync failed: " (pr-str (:error sync))))
