@@ -291,6 +291,11 @@
                   (let [_ (sh "nbb" [(path/join clone "src" "hayari" "corpus.cljs")
                                      "--only" "top-entities"]
                               {:cwd clone :stdio "inherit"})
+                        ;; その日のバイトを永続層へ預ける。失敗しても tick は
+                        ;; 続ける —— 観測は 2021 年以降なら取り直せるので、
+                        ;; custody の失敗はデータの喪失ではなく遅延である。
+                        _ (sh "nbb" [(path/join clone "bin" "persist.cljs") "--day" day]
+                              {:cwd clone :stdio "inherit"})
                         _ (record-health! clone {:outcome :added-day :day day})
                         changed (:ok (git clone "status" "--porcelain"
                                           "--" "data/hayari-summary.edn"
