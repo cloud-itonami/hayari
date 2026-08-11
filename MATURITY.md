@@ -11,7 +11,7 @@ not evidence, and that applies to this file first.
 | axis | state | evidence |
 |---|---|---|
 | **substrate** | `src/hayari/{core.cljc,collect.cljs,corpus.cljs,xmile.cljc,simulate.cljs}` | decision core is pure and I/O-free; effects and the XMILE engine are separate |
-| **test** | 31 tests / 143 assertions | 26/125 core (no sibling checkout needed) + 5/18 XMILE integration |
+| **test** | 34 tests / 160 assertions | 29/142 core (no sibling checkout needed) + 5/18 XMILE integration |
 | **governed** | **none** | hayari publishes no assessments and actuates nothing, so it carries no governor. See "Why no governor" below |
 | **ingest** | 3 live public APIs, unauthenticated | Wikimedia pageviews · MediaWiki pageprops · Wikidata claims+labels. All probed 2026-08-10 |
 | **docs** | README · MATURITY.md · `docs/operator-quickstart.md` · ADR-2608103000 | quickstart carries real pasted output, not invented output |
@@ -133,10 +133,22 @@ Corpus depth.
       and loaded by `manifest/edn-query.cljs`. For five waves every observation
       row carried `:source/dataset "hayari"`, claiming membership of a query
       plane that had never loaded a single one of them
-- [ ] **The summary is a snapshot, not a feed.** It is whatever the last person
-      to run collect committed. Nothing lands it on a cadence, so freshness is
-      unowned — the same open question as the corpus
-- [ ] **Decide where the RAW history lives.** `data/hayari.datoms.edn` is gitignored per
+- [x] **The summary is a feed.** bin/tick.cljs runs every 15 minutes, commits
+      only when the summary changed, advances the west pin in batches and runs
+      `west update`, so the query plane follows without anyone touching it
+- [x] **The raw history has a home.** cloud-itonami/hayari-data — a DataLad
+      dataset whose bytes live on s3.kotobase.net through a git-annex S3 remote
+      (ADR-2608110400). Custody demonstrated: dropped locally, retrieved with a
+      matching sha256, and retrieved again from a fresh clone elsewhere
+- [x] **The loop reports on itself, and something else judges it.** A stale
+      heartbeat or repeated failures fail `hayari-tick-alive`, and
+      `hayari-alarm` notifies once on transition — a dead loop cannot report
+      its own death, so the watcher is a separate process
+- [ ] **Superseded note:** the earlier claim here that raw history needed no home
+      rested on the observations being re-fetchable back to 2021-01-01. That
+      measurement stands; the conclusion did not. Re-fetchable is not retained —
+      the upstream promises nothing, a re-fetch returns today's answer rather
+      than what was seen, and before 2021 nobody can fetch it at all `data/hayari.datoms.edn` is gitignored per
       the observatory convention, so today the history exists only on whichever
       machine ran the collector. A year-by-year record needs a home: a DataLad
       dataset (as `hirameki-patents` does) or a summary projection under
