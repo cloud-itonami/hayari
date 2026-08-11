@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.gftd.hayari-collect</string>
+  <key>UserName</key><string>asher</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/sh</string><string>-lc</string>
+  <string>export PATH="/Users/asher/.radicle/bin:/opt/homebrew/bin:$PATH"; exec nbb /Users/asher/.gftd/hayari-rad/bin/tick.cljs --mode collect --clone /Users/asher/.gftd/hayari-rad --budget-ms 420000</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>HOME</key><string>/Users/asher</string>
+    <key>RAD_PASSPHRASE</key><string></string></dict>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><false/>
+  <key>StandardOutPath</key><string>/tmp/hayari-collect.log</string>
+  <key>StandardErrorPath</key><string>/tmp/hayari-collect.log</string>
+</dict></plist>
