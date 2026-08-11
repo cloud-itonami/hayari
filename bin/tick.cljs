@@ -229,13 +229,79 @@
                                   " and checkout updated — "
                                   (or on-disk "?") " day(s) now visible to the query plane"))))))))))))
 
-(defn- ensure-clone [clone]
+(defn- mirror!
+  "Carry Radicle's canonical head to GitHub, archive the raw, advance the pin.
+
+  This half runs where the credentials already are. The collecting machine holds
+  only a self-issued Radicle key, so the GitHub token's blast radius does not
+  grow by moving the loop to a machine that stays awake — which was the whole
+  objection to moving it."
+  [clone root lag raw-from]
+  (git clone "fetch" "--quiet" "rad")
+  (let [before (days-held clone)
+        ff     (git clone "merge" "--ff-only" "--quiet" "rad/main")]
+    (if (:error ff)
+      (do (println (str "  mirror: cannot fast-forward to rad/main — "
+                        "GitHub holds commits Radicle does not. Two writers; "
+                        "reconcile by hand: " (:err (:error ff))))
+          (set! (.-exitCode js/process) 1))
+      (let [new-days (sort (remove before (days-held clone)))]
+        (git clone "fetch" "--quiet" "origin")
+        (let [p (git clone "push" "--quiet" "origin" "main")]
+          (if (:error p)
+            (do (println (str "  mirror: push to GitHub failed, next run retries — "
+                              (:err (:error p))))
+                (set! (.-exitCode js/process) 1))
+            (do
+              (println (str "  mirror: GitHub main now "
+                            (subs (or (:ok (git clone "rev-parse" "HEAD")) "?") 0 8)
+                            (if (seq new-days)
+                              (str " · " (count new-days) " new day(s): "
+                                   (str/join ", " new-days))
+                              " · nothing new")))
+              ;; Custody. The collector keeps a per-day copy so a mirror that
+              ;; skipped a run can still fetch it; a raw we miss is delay, not
+              ;; loss, because every collected day is inside Wikimedia's
+              ;; 2021-onward window and can be fetched again.
+              (doseq [d new-days]
+                (if-not raw-from
+                  (println (str "  custody: no --raw-from, " d " not archived"))
+                  (let [src (str raw-from "/data/day-" d ".datoms.edn")
+                        dst (path/join clone "data" "hayari.datoms.edn")
+                        r   (sh "scp" ["-q" src dst] {})]
+                    (if (:error r)
+                      (println (str "  custody: " d " raw unavailable at " src
+                                    " — re-fetchable, not lost"))
+                      (sh "nbb" [(path/join clone "bin" "persist.cljs") "--day" d]
+                          {:cwd clone :stdio "inherit"})))))
+              (advance-pin! root clone lag (empty? new-days)))))))))
+
+(defn- push!
+  "Publish to `remote`. Radicle takes no refspec: `git push rad` writes the
+  commit into this peer's namespace and, because this peer is a delegate,
+  updates the canonical head — which is what the mirror later reads."
+  [clone remote]
+  (if (= remote "rad")
+    (git clone "push" "--quiet" "rad")
+    (do (git clone "pull" "--rebase=false" "--ff-only" "--quiet" "origin" "main")
+        (git clone "push" "--quiet" "origin" "main"))))
+
+(defn- ensure-clone
+  "Bring the clone to `remote`'s canonical main.
+
+  A `rad` clone is never created here. `rad clone <RID>` needs a running node
+  and an identity, and doing that implicitly would hide the one thing the
+  publishing machine must have; if it is missing, say so."
+  [clone remote]
   (if (fs/existsSync (path/join clone ".git"))
-    (let [_ (git clone "fetch" "--quiet" "origin")
-          r (git clone "reset" "--hard" "--quiet" "origin/main")]
+    (let [_ (git clone "fetch" "--quiet" remote)
+          r (git clone "reset" "--hard" "--quiet" (str remote "/main"))]
       (if (:error r) r {:ok "synced"}))
-    (do (fs/mkdirSync (path/dirname clone) #js {:recursive true})
-        (sh "git" ["clone" "--quiet" repo-url clone] {}))))
+    (if (= remote "origin")
+      (do (fs/mkdirSync (path/dirname clone) #js {:recursive true})
+          (sh "git" ["clone" "--quiet" repo-url clone] {}))
+      {:error {:err (str "no clone at " clone " — create it with `rad clone "
+                         "rad:z5GnP9asXmnYf2i9TG2LcV2hvC2W " clone "`")}})))
 
 (defn -main [& argv]
   (let [opts (loop [a (vec argv) m {}]
@@ -247,9 +313,24 @@
         budget (or (:budget-ms opts) "700000")
         root   (or (:root opts) default-superproject)
         lag    (js/parseInt (or (:pin-lag opts) "4") 10)
-        pin?   (not= "false" (:pin opts))]
-    (println (str "hayari tick " (subs (.toISOString (js/Date.)) 0 19) "Z"))
-    (let [sync (ensure-clone clone)]
+        ;; `collect` publishes through Radicle and touches no GitHub credential;
+        ;; `full` is the original single-machine loop. The split exists because
+        ;; cloud-itonami disables deploy keys org-wide, so the always-on machine
+        ;; cannot be given a GitHub key — but it can hold a self-issued Radicle
+        ;; key, which grants nothing but the right to publish this one repo.
+        mode   (or (:mode opts) "full")
+        remote (or (:remote opts) (if (= mode "collect") "rad" "origin"))
+        pin?   (and (not= "false" (:pin opts)) (not= mode "collect"))
+        persist? (not= mode "collect")]
+    (println (str "hayari tick " (subs (.toISOString (js/Date.)) 0 19) "Z"
+                  " · mode " mode " · publishing to " remote))
+    (if (= mode "mirror")
+      (let [sync (ensure-clone clone "rad")]
+        (if (:error sync)
+          (do (println (str "  clone/sync failed: " (pr-str (:error sync))))
+              (set! (.-exitCode js/process) 1))
+          (mirror! clone root lag (:raw-from opts))))
+      (let [sync (ensure-clone clone remote)]
       (if (:error sync)
         (do (println (str "  clone/sync failed: " (pr-str (:error sync))))
             (set! (.-exitCode js/process) 1))
@@ -280,22 +361,26 @@
                       (git clone "add" "data/hayari-summary.edn")
                       (git clone "-c" "user.name=Jun Kawasaki" "-c" "user.email=jun@gftd.group"
                            "commit" "-q" "-m" (str "health: collect failed on " day))
-                      (git clone "pull" "--rebase=false" "--ff-only" "--quiet" "origin" "main")
-                      (git clone "push" "--quiet" "origin" "main")
+                      (push! clone remote)
                       (set! (.-exitCode js/process) 1))
                   ;; Name the day's most-viewed works before deciding whether
                   ;; anything changed, so the entity index lands in the SAME
                   ;; commit as the day that introduced those works. A follow-up
                   ;; commit would leave the summary briefly pointing at QIDs the
                   ;; plane cannot resolve.
-                  (let [_ (sh "nbb" [(path/join clone "src" "hayari" "corpus.cljs")
+                  (let [_ (let [f (path/join clone "data" "hayari.datoms.edn")]
+                            (when (fs/existsSync f)
+                              (fs/copyFileSync f (path/join clone "data"
+                                                            (str "day-" day ".datoms.edn")))))
+                        _ (sh "nbb" [(path/join clone "src" "hayari" "corpus.cljs")
                                      "--only" "top-entities"]
                               {:cwd clone :stdio "inherit"})
                         ;; その日のバイトを永続層へ預ける。失敗しても tick は
                         ;; 続ける —— 観測は 2021 年以降なら取り直せるので、
                         ;; custody の失敗はデータの喪失ではなく遅延である。
-                        _ (sh "nbb" [(path/join clone "bin" "persist.cljs") "--day" day]
-                              {:cwd clone :stdio "inherit"})
+                        _ (when persist?
+                            (sh "nbb" [(path/join clone "bin" "persist.cljs") "--day" day]
+                                {:cwd clone :stdio "inherit"}))
                         _ (record-health! clone {:outcome :added-day :day day})
                         changed (:ok (git clone "status" "--porcelain"
                                           "--" "data/hayari-summary.edn"
@@ -316,8 +401,7 @@
                                           "where Wikimedia's per-country dataset begins."))]
                           (if (:error c)
                             (println (str "  commit failed: " (pr-str (:error c))))
-                            (let [_ (git clone "pull" "--rebase=false" "--ff-only" "--quiet" "origin" "main")
-                                  p (git clone "push" "--quiet" "origin" "main")]
+                            (let [p (push! clone remote)]
                               (if (:error p)
                                 (do (println (str "  push failed (will retry next tick): "
                                                   (:status (:error p))))
@@ -326,6 +410,6 @@
                                 (do
                                   (println (str "  committed and pushed " day
                                                 " — " (inc (count held)) " day(s) held"))
-                                  (when pin? (advance-pin! root clone lag false)))))))))))))))))))
+                                  (when pin? (advance-pin! root clone lag false))))))))))))))))))))
 
 (apply -main *command-line-args*)
