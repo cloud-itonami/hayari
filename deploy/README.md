@@ -67,3 +67,19 @@ ssh asher 'sudo launchctl kickstart -k system/com.gftd.hayari-collect'
 # laptop（着地側）
 launchctl start com.gftd.hayari-mirror && tail -f /tmp/hayari-mirror.log
 ```
+
+## commit は必ず Radicle から入る（GitHub へ直接 push しない）
+
+mirror は **ff しかしない**ので、GitHub 側に Radicle に無い commit があると
+その時点で止まる。実測 2026-08-11: この README を GitHub へ直接 push した結果、
+asher の clone が `Not possible to fast-forward` で詰まり、asher 側で手動 merge
+して押し直すまで両面が分岐したままになった。**破ったのは設計者自身である。**
+
+コード変更も data と同じ経路を通す:
+
+```bash
+scp <file> asher:.gftd/hayari-rad/<path>
+ssh asher 'export PATH=$HOME/.radicle/bin:$PATH RAD_PASSPHRASE=""; cd ~/.gftd/hayari-rad
+           git add -A && git commit -m "…" && git push rad'
+# GitHub へは mirror が運ぶ（手で push しない）
+```
