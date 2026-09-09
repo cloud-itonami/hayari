@@ -17,7 +17,7 @@
 (ns gen-regions
   (:require ["fs" :as fs]
             [cljs.pprint :as pp]
-            [clojure.string :as str]))
+            [kotoba.lang.text :as str]))
 
 (def source-url
   "https://raw.githubusercontent.com/lukes/ISO-3166-Countries-with-Regional-Codes/master/all/all.json")

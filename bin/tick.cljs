@@ -41,7 +41,7 @@
             ["path" :as path]
             ["child_process" :as cp]
             [clojure.edn :as edn]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [nbb.classpath :as classpath]))
 
 ;; The tick lives in bin/, the decision core in src/. Same *file*-relative

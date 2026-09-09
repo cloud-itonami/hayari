@@ -22,7 +22,7 @@
   (:require ["fs" :as fs]
             ["path" :as path]
             [clojure.edn :as edn]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [nbb.classpath :as cp]))
 
 ;; This script must run as plain `nbb src/hayari/collect.cljs`, with no
