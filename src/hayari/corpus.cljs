@@ -28,7 +28,7 @@
   (:require ["fs" :as fs]
             ["path" :as path]
             [clojure.edn :as edn]
-            [clojure.string :as str]
+            [kotoba.lang.text :as str]
             [nbb.classpath :as cp]))
 
 (def ^:private src-dir   (path/dirname (path/dirname *file*)))

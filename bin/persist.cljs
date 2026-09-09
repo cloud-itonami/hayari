@@ -21,7 +21,7 @@
   常駐から呼ぶときは `~/.gftd/hayari-s3-creds`（mode 600、2 行）から読む。
   plist は world-readable なので、そこに値を書いてはならない。"
   (:require ["fs" :as fs] ["path" :as path] ["child_process" :as cp]
-            [clojure.edn :as edn] [clojure.string :as str]))
+            [clojure.edn :as edn] [kotoba.lang.text :as str]))
 
 (def args (vec *command-line-args*))
 (defn- flag [n d] (let [i (.indexOf args n)] (if (neg? i) d (nth args (inc i)))))

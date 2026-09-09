@@ -21,7 +21,7 @@
     BACKEND GAP, not a style — do not imitate this as though word-typed
     scalars were the intended Kotoba idiom, and do not flatten this core to
     handles to chase native. See CLAUDE.md 『`.kotoba` で「書けない」は 2 種類ある』."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             #?(:cljs [cljs.reader])))
 
 ;; ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@
 (defn region-of
   "ISO 3166-1 alpha-2 -> UN M49 region/sub-region, from data/m49-regions.edn."
   [iso2 regions]
-  (if-let [e (get regions (str/upper-case (str iso2)))]
+  (if-let [e (get regions (str/upper (str iso2)))]
     {:ok e}
     {:error {:reason :country-not-in-region-table :iso2 iso2}}))
 
