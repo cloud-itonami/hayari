@@ -133,7 +133,7 @@ Corpus depth.
       and loaded by `manifest/edn-query.cljs`. For five waves every observation
       row carried `:source/dataset "hayari"`, claiming membership of a query
       plane that had never loaded a single one of them
-- [x] **The summary is a feed.** bin/tick.cljs runs every 15 minutes, commits
+- [x] **The summary is a feed.** bin/tick.cljk runs every 15 minutes, commits
       only when the summary changed, advances the west pin in batches and runs
       `west update`, so the query plane follows without anyone touching it
 - [x] **The raw history has a home.** cloud-itonami/hayari-data — a DataLad

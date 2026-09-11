@@ -19,7 +19,7 @@ west update --fetch smart org-oasis-open-xmile
 ## 1. Tests first — they need no network
 
 ```
-$ nbb --classpath src:test test/hayari/core_test.cljs
+$ nbb --classpath src:test test/hayari/core_test.cljk
 Testing hayari.core-test
 
 Ran 25 tests containing 115 assertions.
@@ -31,7 +31,7 @@ sound. The XMILE integration test needs the sibling library:
 
 ```
 $ nbb --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src \
-      test/hayari/xmile_test.cljs
+      test/hayari/xmile_test.cljk
 Ran 5 tests containing 18 assertions.
 0 failures, 0 errors.
 ```
@@ -42,7 +42,7 @@ Start narrow. This finishes in under a minute and shows every counter you will
 later read at full scale.
 
 ```
-$ nbb src/hayari/collect.cljs --date 2026-08-08 --days 4 --top 15 \
+$ nbb src/hayari/collect.cljk --date 2026-08-08 --days 4 --top 15 \
       --countries JP,KR,US,FR,BR,TW --out /tmp/dom.edn
   2026-08-07: 90 rows from 6 countries · 0 no data
     qid 74/90 · kind 63 · domain 63 · genre 22 · occ 36 · era 22 · dropped 20 (ns 16)
@@ -72,7 +72,7 @@ Reading that:
 ## 3. The full sweep
 
 ```
-$ nbb src/hayari/collect.cljs
+$ nbb src/hayari/collect.cljk
 ```
 
 Defaults: all 249 M49 countries, top 25, the date two days back (Wikimedia's
@@ -89,7 +89,7 @@ countries whose only above-threshold pages were navigation.
 If the budget runs out you get a partial result, not a killed process:
 
 ```
-$ nbb src/hayari/collect.cljs --date 2026-08-07 --top 5 --budget-ms 3000
+$ nbb src/hayari/collect.cljk --date 2026-08-07 --top 5 --budget-ms 3000
 hayari: 2026-08-07 · 249 countries · top 5 · budget 3s
   attention: 54 rows from ... · 17 countries with no data · 215 countries SKIPPED (budget)
   qid: 0/54 resolved · 47 titles SKIPPED (budget)
@@ -106,7 +106,7 @@ Every run prints the single-year axis and writes it as
 `:hayari.era-coverage/by-year`, with the empty years present as zeros:
 
 ```
-$ nbb src/hayari/collect.cljs --date 2026-08-08 --top 200 --countries JP,GB
+$ nbb src/hayari/collect.cljk --date 2026-08-08 --top 200 --countries JP,GB
   2026-08-08: 400 rows from 2 countries · 0 no data
     qid 399/400 · kind 355 · domain 355 · genre 115 · occ 263 · era 94 · dropped 7 (ns 1)
   wrote ... — 395 datoms across 1 day(s): 2026-08-08
@@ -127,7 +127,7 @@ enrichment time, which is why the registry's daily run stays at 25 — that job'
 purpose is the time series. Run depth separately:
 
 ```bash
-nbb src/hayari/collect.cljs --top 300 --days 4 --budget-ms 1500000 \
+nbb src/hayari/collect.cljk --top 300 --days 4 --budget-ms 1500000 \
     --countries JP,US,GB,FR,DE,IT,ES,KR,TW,BR,IN,MX,PL,NL,SE,RU,TR
 ```
 
@@ -137,7 +137,7 @@ The collector records that a country looked at something. This fetches what
 that something is.
 
 ```
-$ nbb src/hayari/corpus.cljs --data /tmp/era-test.edn \
+$ nbb src/hayari/corpus.cljk --data /tmp/era-test.edn \
       --content-limit 25 --entity-limit 100
 hayari corpus: 25/393 articles · 100/386 entities · budget 200s
   content: 25 fetched · 0 failed · 0 skipped → 25 held
@@ -181,7 +181,7 @@ Needs at least three days of history — a straight line through two points fits
 perfectly and means nothing, so the estimator refuses it.
 
 ```
-$ nbb src/hayari/simulate.cljs --data /tmp/multi2.edn --out /tmp/xmile-fit2.edn
+$ nbb src/hayari/simulate.cljk --data /tmp/multi2.edn --out /tmp/xmile-fit2.edn
 hayari xmile: 4 day(s) held · 110 works · 18 fitted (>= 3 days)
   λ=0.7328  half-life=0.95d  r²=1.000  MAPE=1.1%  n=3  Perez_Hilton [:person]
   λ=0.1288  half-life=5.38d  r²=0.998  MAPE=9.4%  n=3  Pauline_Ferrand-Prévot [:person]
@@ -206,7 +206,7 @@ hayari xmile: 4 day(s) held · 110 works · 18 fitted (>= 3 days)
 The same model, applied to per-domain aggregates instead of single works:
 
 ```
-$ nbb src/hayari/simulate.cljs --by domain --data /tmp/dom.edn
+$ nbb src/hayari/simulate.cljk --by domain --data /tmp/dom.edn
 hayari xmile [domain]: 4 day(s) held · 7 series · 5 fitted (>= 3 days)
   λ=0.1947  half-life=3.56d  r²=0.897  MAPE=6.8%   n=4  person [:person]
   λ=-0.0595  half-life=growing  r²=0.808  MAPE=2.6%   n=4  culture [:culture]
