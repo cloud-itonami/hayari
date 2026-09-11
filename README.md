@@ -191,7 +191,7 @@ per-country endpoint は 1 か国あたり最大 1000 件返す。**古い作品
 カタログの厚みではない。年代を厚くしたい時は深い run を別に回す:
 
 ```bash
-nbb src/hayari/collect.cljk --top 300 --days 4 --budget-ms 1500000 \
+kbb --backend sci src/hayari/collect.cljk --top 300 --days 4 --budget-ms 1500000 \
     --countries JP,US,GB,FR,DE,IT,ES,KR,TW,BR,IN,MX,PL,NL,SE,RU,TR
 ```
 
@@ -201,8 +201,8 @@ nbb src/hayari/collect.cljk --top 300 --days 4 --budget-ms 1500000 \
 取りに行く —— Wikipedia の冒頭抜粋と、Wikidata の entity レコード。
 
 ```bash
-nbb src/hayari/corpus.cljk                       # 既定: 記事 2000 / entity 4000、予算 900s
-nbb src/hayari/corpus.cljk --content-limit 600 --entity-limit 2000
+kbb --backend sci src/hayari/corpus.cljk                       # 既定: 記事 2000 / entity 4000、予算 900s
+kbb --backend sci src/hayari/corpus.cljk --content-limit 600 --entity-limit 2000
 ```
 
 出力は 2 つ、**ライセンスが違うので分けてある**:
@@ -267,7 +267,7 @@ d/dt Attention = −Decay
 文化と出来事とで違う速さで抜けていくのか」を 1 コマンドで問える:
 
 ```
-$ nbb src/hayari/simulate.cljk --by domain
+$ kbb --backend sci src/hayari/simulate.cljk --by domain
   λ=0.1947  half-life=3.56d   r²=0.897  person
   λ=-0.0595 half-life=growing r²=0.808  culture
   λ=-0.1658 half-life=growing r²=0.600  event
@@ -286,11 +286,11 @@ $ nbb src/hayari/simulate.cljk --by domain
 ## 走らせる
 
 ```bash
-nbb src/hayari/collect.cljk                       # 既定: 2 日前・249 国・top 25・予算 480s
-nbb src/hayari/collect.cljk --days 7              # 7 日ぶんを 1 回で（時系列を作る）
-nbb src/hayari/simulate.cljk                      # 減衰を XMILE で当てはめて回す
-nbb --classpath src:test test/hayari/core_test.cljk   # 決定核（外部依存なし）
-nbb scripts/gen_regions.cljk                      # 地域表の再生成
+kbb --backend sci src/hayari/collect.cljk                       # 既定: 2 日前・249 国・top 25・予算 480s
+kbb --backend sci src/hayari/collect.cljk --days 7              # 7 日ぶんを 1 回で（時系列を作る）
+kbb --backend sci src/hayari/simulate.cljk                      # 減衰を XMILE で当てはめて回す
+kbb --backend sci --classpath src:test test/hayari/core_test.cljk   # 決定核（外部依存なし）
+kbb --backend sci scripts/gen_regions.cljk                      # 地域表の再生成
 ```
 
 **`--classpath` は要らない。** 両エントリは `*file*` から自分の `src` を解決する

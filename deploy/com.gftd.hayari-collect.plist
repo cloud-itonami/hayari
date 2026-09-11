@@ -5,7 +5,7 @@
   <key>UserName</key><string>asher</string>
   <key>ProgramArguments</key>
   <array><string>/bin/sh</string><string>-lc</string>
-  <string>export PATH="/Users/asher/.radicle/bin:/opt/homebrew/bin:$PATH"; exec nbb /Users/asher/.gftd/hayari-rad/bin/tick.cljk --mode collect --clone /Users/asher/.gftd/hayari-rad --budget-ms 420000</string></array>
+  <string>export PATH="/Users/asher/.radicle/bin:/opt/homebrew/bin:$PATH"; exec kbb --backend sci /Users/asher/.gftd/hayari-rad/bin/tick.cljk --mode collect --clone /Users/asher/.gftd/hayari-rad --budget-ms 420000</string></array>
   <key>EnvironmentVariables</key><dict>
     <key>HOME</key><string>/Users/asher</string>
     <key>RAD_PASSPHRASE</key><string></string></dict>

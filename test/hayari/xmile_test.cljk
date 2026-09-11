@@ -1,7 +1,7 @@
 (ns hayari.xmile-test
   "Integration test for the XMILE layer. Needs the library on the classpath:
 
-    nbb --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src \\
+    kbb --backend sci --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src \\
         test/hayari/xmile_test.cljk
 
   Kept separate from core_test so the decision core stays testable with no

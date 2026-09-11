@@ -1,8 +1,8 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 (ns hayari.persist
   "hayari 流行 — その日の生観測を DataLad dataset へ預ける。
 
-    nbb bin/persist.cljk [--data PATH] [--dataset PATH] [--day YYYY-MM-DD]
+    kbb --backend sci bin/persist.cljk [--data PATH] [--dataset PATH] [--day YYYY-MM-DD]
 
   ## なぜ預けるのか（再取得できるのに）
 
