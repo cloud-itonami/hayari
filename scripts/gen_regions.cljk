@@ -1,7 +1,7 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 ;; hayari 流行 — regenerate data/m49-regions.edn (ISO 3166-1 alpha-2 -> UN M49).
 ;;
-;;   nbb scripts/gen_regions.cljk
+;;   kbb --backend sci scripts/gen_regions.cljk
 ;;
 ;; The region axis has to come from a published standard rather than a hand-drawn
 ;; grouping, or "region" means whatever the author felt like that day. UN M49 is

@@ -1,8 +1,8 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 (ns hayari.tick
   "hayari 流行 — one small increment, then stop.
 
-    nbb bin/tick.cljk [--clone PATH] [--budget-ms 700000]
+    kbb --backend sci bin/tick.cljk [--clone PATH] [--budget-ms 700000]
                       [--root SUPERPROJECT] [--pin-lag 4] [--pin false]
 
   Designed to be run on a short timer (15 minutes). Each tick collects exactly

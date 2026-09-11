@@ -5,7 +5,7 @@ asher (mac mini, 72日連続稼働)          laptop
   com.gftd.hayari-node    ← LaunchDaemon, KeepAlive
   com.gftd.hayari-collect ← 15分ごと            com.gftd.hayari-mirror ← 15分ごと
         │                                              │
-        │ nbb bin/tick.cljk --mode collect             │ --mode mirror
+        │ kbb --backend sci bin/tick.cljk --mode collect             │ --mode mirror
         │ collect → commit → git push rad              │ rad/main → ff → GitHub
         ▼                                              │ raw を asher から取り寄せ
    Radicle seed gad (tailnet 100.82.98.110) ──────────▶│ → s3.kotobase.net へ custody

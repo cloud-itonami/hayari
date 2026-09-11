@@ -1,4 +1,4 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 (ns hayari.collect
   "hayari 流行 — the EFFECTS layer. Probes the world, hands observations to the
   pure core (`hayari.core`), writes the datom plane.
@@ -6,7 +6,7 @@
   Everything that touches the network, the clock or the filesystem lives here;
   every judgement lives in the core. Run:
 
-    nbb --classpath src src/hayari/collect.cljk [--date YYYY-MM-DD] [--top N]
+    kbb --backend sci --classpath src src/hayari/collect.cljk [--date YYYY-MM-DD] [--top N]
                                                 [--countries JP,US,BR] [--out PATH]
 
   Sources, all public and unauthenticated (probed 2026-08-10):
@@ -25,7 +25,7 @@
             [kotoba.lang.text :as str]
             [nbb.classpath :as cp]))
 
-;; This script must run as plain `nbb src/hayari/collect.cljk`, with no
+;; This script must run as plain `kbb --backend sci src/hayari/collect.cljk`, with no
 ;; --classpath and from any working directory, because that is how
 ;; `manifest/observatories.edn`'s runner invokes it: it builds the command as
 ;; ["nbb" main & args], and nbb requires --classpath BEFORE the script path, so

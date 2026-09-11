@@ -1,9 +1,9 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 (ns hayari.corpus
   "hayari 流行 — fetch the actual CONTENT and the ENTITY records behind the
   observations.
 
-    nbb src/hayari/corpus.cljk [--content-limit 2000] [--entity-limit 4000]
+    kbb --backend sci src/hayari/corpus.cljk [--content-limit 2000] [--entity-limit 4000]
                                [--budget-ms 900000] [--data PATH]
 
   The collector records that a country looked at something. This fetches what

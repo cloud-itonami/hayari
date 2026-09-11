@@ -1,10 +1,10 @@
-#!/usr/bin/env nbb
+#!/usr/bin/env kbb
 (ns hayari.simulate
   "hayari 流行 — fit and simulate attention decay from the accumulated
   observations, using the OASIS XMILE engine in
   `kotoba-lang/org-oasis-open-xmile`.
 
-    nbb src/hayari/simulate.cljk [--min-days 3] [--country JP] [--top 10]
+    kbb --backend sci src/hayari/simulate.cljk [--min-days 3] [--country JP] [--top 10]
                                  [--by work|domain|era] [--data PATH] [--out PATH]
                                  [--xmile-src PATH]
 
