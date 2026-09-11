@@ -191,7 +191,7 @@ per-country endpoint は 1 か国あたり最大 1000 件返す。**古い作品
 カタログの厚みではない。年代を厚くしたい時は深い run を別に回す:
 
 ```bash
-nbb src/hayari/collect.cljs --top 300 --days 4 --budget-ms 1500000 \
+nbb src/hayari/collect.cljk --top 300 --days 4 --budget-ms 1500000 \
     --countries JP,US,GB,FR,DE,IT,ES,KR,TW,BR,IN,MX,PL,NL,SE,RU,TR
 ```
 
@@ -201,8 +201,8 @@ nbb src/hayari/collect.cljs --top 300 --days 4 --budget-ms 1500000 \
 取りに行く —— Wikipedia の冒頭抜粋と、Wikidata の entity レコード。
 
 ```bash
-nbb src/hayari/corpus.cljs                       # 既定: 記事 2000 / entity 4000、予算 900s
-nbb src/hayari/corpus.cljs --content-limit 600 --entity-limit 2000
+nbb src/hayari/corpus.cljk                       # 既定: 記事 2000 / entity 4000、予算 900s
+nbb src/hayari/corpus.cljk --content-limit 600 --entity-limit 2000
 ```
 
 出力は 2 つ、**ライセンスが違うので分けてある**:
@@ -267,7 +267,7 @@ d/dt Attention = −Decay
 文化と出来事とで違う速さで抜けていくのか」を 1 コマンドで問える:
 
 ```
-$ nbb src/hayari/simulate.cljs --by domain
+$ nbb src/hayari/simulate.cljk --by domain
   λ=0.1947  half-life=3.56d   r²=0.897  person
   λ=-0.0595 half-life=growing r²=0.808  culture
   λ=-0.1658 half-life=growing r²=0.600  event
@@ -286,11 +286,11 @@ $ nbb src/hayari/simulate.cljs --by domain
 ## 走らせる
 
 ```bash
-nbb src/hayari/collect.cljs                       # 既定: 2 日前・249 国・top 25・予算 480s
-nbb src/hayari/collect.cljs --days 7              # 7 日ぶんを 1 回で（時系列を作る）
-nbb src/hayari/simulate.cljs                      # 減衰を XMILE で当てはめて回す
-nbb --classpath src:test test/hayari/core_test.cljs   # 決定核（外部依存なし）
-nbb scripts/gen_regions.cljs                      # 地域表の再生成
+nbb src/hayari/collect.cljk                       # 既定: 2 日前・249 国・top 25・予算 480s
+nbb src/hayari/collect.cljk --days 7              # 7 日ぶんを 1 回で（時系列を作る）
+nbb src/hayari/simulate.cljk                      # 減衰を XMILE で当てはめて回す
+nbb --classpath src:test test/hayari/core_test.cljk   # 決定核（外部依存なし）
+nbb scripts/gen_regions.cljk                      # 地域表の再生成
 ```
 
 **`--classpath` は要らない。** 両エントリは `*file*` から自分の `src` を解決する
@@ -313,11 +313,11 @@ source は 3 つとも公開・無認証（2026-08-10 実測）:
 ## 構造
 
 ```
-src/hayari/core.cljc      決定核（純粋・I/O 無し・外部依存なし）— 判断はここだけ
-src/hayari/collect.cljs   effects（nbb）— network / clock / fs はここだけ
-src/hayari/corpus.cljs    本文抜粋 + entity の取得（ライセンスを行ごとに刻む）
-src/hayari/xmile.cljc     XMILE モデルの組み立て（org-oasis-open-xmile を呼ぶ）
-src/hayari/simulate.cljs  当てはめ + 実行のエントリ
+src/hayari/core.cljk      決定核（純粋・I/O 無し・外部依存なし）— 判断はここだけ
+src/hayari/collect.cljk   effects（nbb）— network / clock / fs はここだけ
+src/hayari/corpus.cljk    本文抜粋 + entity の取得（ライセンスを行ごとに刻む）
+src/hayari/xmile.cljk     XMILE モデルの組み立て（org-oasis-open-xmile を呼ぶ）
+src/hayari/simulate.cljk  当てはめ + 実行のエントリ
 data/kinds.edn            P31 QID → 種別（91 種。label は API 実測値を pin、
                           [MEASURED]（実測で出た）と [BREADTH]（未観測の語彙）を明示）
 data/domains.edn          種別 → 領域の roll-up（手書き語彙）

@@ -5,12 +5,12 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "collect": "nbb src/hayari/collect.cljs",
-    "simulate": "nbb src/hayari/simulate.cljs",
-    "test": "nbb --classpath src:test test/hayari/core_test.cljs",
-    "test:xmile": "nbb --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src test/hayari/xmile_test.cljs",
-    "gen-regions": "nbb scripts/gen_regions.cljs",
-    "corpus": "nbb src/hayari/corpus.cljs"
+    "collect": "nbb src/hayari/collect.cljk",
+    "simulate": "nbb src/hayari/simulate.cljk",
+    "test": "nbb --classpath src:test test/hayari/core_test.cljk",
+    "test:xmile": "nbb --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src test/hayari/xmile_test.cljk",
+    "gen-regions": "nbb scripts/gen_regions.cljk",
+    "corpus": "nbb src/hayari/corpus.cljk"
   },
   "devDependencies": {
     "nbb": "^1.3.196"

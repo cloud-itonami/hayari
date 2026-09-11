@@ -2,7 +2,7 @@
   "Integration test for the XMILE layer. Needs the library on the classpath:
 
     nbb --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src \\
-        test/hayari/xmile_test.cljs
+        test/hayari/xmile_test.cljk
 
   Kept separate from core_test so the decision core stays testable with no
   sibling checkout — the estimation is arithmetic and should not need an
