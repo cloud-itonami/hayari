@@ -7,7 +7,7 @@
   Kept separate from core_test so the decision core stays testable with no
   sibling checkout — the estimation is arithmetic and should not need an
   engine to verify."
-  (:require [clojure.test :refer [deftest is testing run-tests]]
+  (:require [kotoba.test :refer [deftest is testing run-tests]]
             [hayari.core :as core]
             [hayari.xmile :as hx]
             [xmile.model :as m]))
