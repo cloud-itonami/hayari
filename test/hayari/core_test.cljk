@@ -4,7 +4,7 @@
   shape with three P577 re-release dates, the uneven country coverage. Invented
   fixtures would have let the meta-article filter and the multi-date era rule
   pass while being wrong against the real feed."
-  (:require [clojure.test :refer [deftest is testing run-tests]]
+  (:require [kotoba.test :refer [deftest is testing run-tests]]
             [cljs.reader]
             [hayari.core :as core]))
 
