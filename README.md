@@ -2,7 +2,7 @@
 
 **hayari（流行）は、どの国のいま何が見られているかを観測し、その作品がどこの国で
 いつ作られたものかを突き合わせる observatory である。** 名前が機能を示さないので
-最初に名乗る（superproject `CLAUDE.md` の規約: メタファ名の repo は README 冒頭で
+最初に名乗る（superproject `AGENTS.md` の規約: メタファ名の repo は README 冒頭で
 名乗る）。`cloud-itonami/hayari` は west project で、`orgs/cloud-itonami/hayari` に
 展開される。
 
@@ -32,7 +32,7 @@
 Wikimedia の per-country endpoint は集計済み・プライバシーフィルタ済みで閲覧者の
 年齢を持たず、Wikidata は作品を記述するもので視聴者を記述しない。作品の公開年代を
 バケットに分けて「世代」と呼ぶことはできるが、それは**別のものを測って世代と名付けた**
-だけになる。superproject `CLAUDE.md` の system-dynamics 規則が禁じているのはこれで、
+だけになる。superproject `AGENTS.md` の system-dynamics 規則が禁じているのはこれで、
 未計測の変換率を大きな pool に掛けて期待値を捏造しないのと同じ形をしている。
 
 作品側の年代（`:hayari/work-era`）は出す。これは作品の性質であって、観測できる。
@@ -329,7 +329,7 @@ data/m49-regions.edn      ISO2 → UN M49（生成物、手編集しない）
 
 ### Kotoba 移行の現在地
 
-`core.cljc` は superproject `CLAUDE.md` の『移行の単位は決定核』の意味での決定核だが、
+`core.cljc` は superproject `AGENTS.md` の『移行の単位は決定核』の意味での決定核だが、
 まだ `.kotoba` としてコンパイルしていない。2 つの制約が形を決めている:
 
 - **例外を投げず `{:ok v}` / `{:error {...}}` を返す。** `explicit-errors` は
@@ -338,7 +338,7 @@ data/m49-regions.edn      ISO2 → UN M49（生成物、手編集しない）
 - **map と vector を自由に使っている。** これらは `:implemented-partial`
   （`#{:compiler :kotoba-wasm :kotoba-cljs}`）で native には無い。これは
   **backend gap であって様式ではない** —— word 型スカラや handle に潰して native を
-  追いかけない（`CLAUDE.md`『`.kotoba` で「書けない」は 2 種類ある』）。
+  追いかけない（`AGENTS.md`『`.kotoba` で「書けない」は 2 種類ある』）。
 
 ## 隣接する repo との境界
 

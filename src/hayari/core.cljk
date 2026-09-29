@@ -8,7 +8,7 @@
 
   ## Kotoba migration status
 
-  This is the decision core in the sense of the superproject CLAUDE.md rule
+  This is the decision core in the sense of the superproject AGENTS.md rule
   『移行の単位は決定核』 — the judgement is here, the effects are in the .cljs
   sibling. It is not yet compiled as `.kotoba`. Two constraints shaped it:
 
@@ -20,7 +20,7 @@
     (`#{:compiler :kotoba-wasm :kotoba-cljs}`) and absent on native. That is a
     BACKEND GAP, not a style — do not imitate this as though word-typed
     scalars were the intended Kotoba idiom, and do not flatten this core to
-    handles to chase native. See CLAUDE.md 『`.kotoba` で「書けない」は 2 種類ある』."
+    handles to chase native. See AGENTS.md 『`.kotoba` で「書けない」は 2 種類ある』."
   (:require [kotoba.lang.text :as str]
             #?(:cljs [cljs.reader])))
 
