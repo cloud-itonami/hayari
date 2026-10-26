@@ -8,7 +8,7 @@
     "collect": "kbb --backend sci src/hayari/collect.cljk",
     "simulate": "kbb --backend sci src/hayari/simulate.cljk",
     "test": "kbb --backend sci --classpath src:test test/hayari/core_test.cljk",
-    "test:xmile": "kbb --backend sci --classpath src:test:../../kotoba-lang/org-oasis-open-xmile/src test/hayari/xmile_test.cljk",
+    "test:xmile": "kbb --backend sci --classpath src:test:../../kotoba-lang/kotoba/lib/org.oasisOpen.xmile/src test/hayari/xmile_test.cljk",
     "gen-regions": "kbb --backend sci scripts/gen_regions.cljk",
     "corpus": "kbb --backend sci src/hayari/corpus.cljk"
   },
